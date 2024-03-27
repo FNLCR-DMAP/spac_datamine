@@ -93,6 +93,41 @@ class TestHistogram(unittest.TestCase):
         unique_annotations = self.adata.obs['annotation2'].nunique()
         self.assertEqual(len(axs), unique_annotations)
 
+    def test_histogram_feature_group_by_one_label_annotation(self):
+
+        #Setup an annotation with one value 
+        n_cells, n_genes = 100, 3
+        # Create a data matrix with fixed values: [1, 2, 3], [2, 3, 4], ...
+        X = np.array([[(j+1) + i for j in range(n_genes)]
+                      for i in range(n_cells)])
+
+        annotation_values = ['A']
+        cell_range = [f'cell_{i}' for i in range(1, n_cells+1)]
+
+        # Create annotations with one label 'A'
+        annotation = pd.DataFrame({
+            'annotation1': ['A' for i in range(n_cells)],
+        }, index=cell_range)
+
+        var = pd.DataFrame(index=['marker1', 'marker2', 'marker3'])
+
+        adata = anndata.AnnData(
+            X.astype(np.float32), obs=annotation, var=var
+        )
+
+        fig, axs = histogram(
+            adata,
+            feature='marker1',
+            group_by='annotation1',
+            together=False
+        )
+        self.assertEqual(len(axs), 1)
+
+        # Check the number of axes returned
+        unique_annotations = self.adata.obs['annotation1'].nunique()
+        self.assertEqual(len(axs), unique_annotations)
+
+
     def test_log_scale(self):
         fig, ax = histogram(self.adata, feature='marker1', log_scale=True)
         self.assertTrue(ax[0].get_xscale() == 'log')
