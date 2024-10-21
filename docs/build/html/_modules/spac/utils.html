@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>spac.utils &mdash; spac  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            spac
+          </a>
+              <div class="version">
+                0.7.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../index.html">Analysis of SPAtial Single Cell Datasets (SPAC)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">spac</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../spac.html">spac package</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#submodules">Submodules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac.data_utils">spac.data_utils module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac.spatial_analysis">spac.spatial_analysis module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac.transformations">spac.transformations module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac.utils">spac.utils module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac.visualization">spac.visualization module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../spac.html#module-spac">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">spac</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">spac.utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for spac.utils</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">anndata</span> <span class="k">as</span> <span class="nn">ad</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.cm</span> <span class="k">as</span> <span class="nn">cm</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="c1"># Configure logging</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
+                    <span class="nb">format</span><span class="o">=</span><span class="s1">&#39;</span><span class="si">%(asctime)s</span><span class="s1"> - </span><span class="si">%(levelname)s</span><span class="s1"> - </span><span class="si">%(message)s</span><span class="s1">&#39;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="regex_search_list"><a class="viewcode-back" href="../../spac.html#spac.utils.regex_search_list">[docs]</a><span class="k">def</span> <span class="nf">regex_search_list</span><span class="p">(</span>
+        <span class="n">regex_patterns</span><span class="p">,</span>
+        <span class="n">list_to_search</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perfrom regex (regular expression) search in a list and</span>
+<span class="sd">    return list of strings matching the regex pattern</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    regex_pattern : str or a list of str</span>
+<span class="sd">        The regex pattern to look for,</span>
+<span class="sd">        single pattern or a list of patterns.</span>
+
+<span class="sd">    list_to_search : list of str</span>
+<span class="sd">        A list of string to seach for string that matches regex pattern.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list of str</span>
+<span class="sd">        A list of strings containing results from search.</span>
+
+<span class="sd">    Example</span>
+<span class="sd">    -------</span>
+<span class="sd">    &gt;&gt;&gt; regex_pattern = [&quot;A&quot;, &quot;^B.*&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; list_to_search = [&quot;ABC&quot;, &quot;BC&quot;, &quot;AC&quot;, &quot;AB&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; result = regex_search_list(regex_pattern, list_to_search)</span>
+<span class="sd">    &gt;&gt;&gt; print(result)</span>
+<span class="sd">    [&#39;BC&#39;]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">list_to_search</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Please provide a list to search.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">regex_patterns</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">regex_patterns</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">error_text</span> <span class="o">=</span> <span class="s2">&quot;Regrex pattern provided &quot;</span> <span class="o">+</span> \
+                <span class="s2">&quot;is not list nor a string&quot;</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">error_text</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">regex_patterns</span> <span class="o">=</span> <span class="p">[</span><span class="n">regex_patterns</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">regex_patterns</span><span class="p">):</span>
+            <span class="n">error_text</span> <span class="o">=</span> <span class="s2">&quot;All items in the pattern &quot;</span> <span class="o">+</span> \
+                <span class="s2">&quot;list must be of type string.&quot;</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">error_text</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">regex_search</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">found</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">found</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">found</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">re</span><span class="o">.</span><span class="n">error</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Error occurred when searching with regex:</span><span class="se">\n</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="s2">&quot;Please review your regex pattern: </span><span class="si">{}</span><span class="se">\n</span><span class="s2">If using * at the start&quot;</span>
+                <span class="s2">&quot;, always have a . before the asterisk.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="n">all_results</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">regex_patterns</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
+        <span class="n">str_found</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">regex_search</span><span class="p">(</span>
+                <span class="n">pattern</span><span class="p">,</span>
+                <span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">list_to_search</span> <span class="k">if</span> <span class="n">regex_search</span><span class="p">(</span>
+                <span class="n">pattern</span><span class="p">,</span>
+                <span class="n">x</span><span class="p">)</span> <span class="ow">in</span> <span class="n">list_to_search</span>
+        <span class="p">]</span>
+        <span class="n">all_results</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">str_found</span><span class="p">)</span>
+
+    <span class="n">all_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">all_results</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">all_results</span></div>
+
+
+<div class="viewcode-block" id="check_list_in_list"><a class="viewcode-back" href="../../spac.html#spac.utils.check_list_in_list">[docs]</a><span class="k">def</span> <span class="nf">check_list_in_list</span><span class="p">(</span>
+        <span class="nb">input</span><span class="p">,</span>
+        <span class="n">input_name</span><span class="p">,</span>
+        <span class="n">input_type</span><span class="p">,</span>
+        <span class="n">target_list</span><span class="p">,</span>
+        <span class="n">need_exist</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">warning</span><span class="o">=</span><span class="kc">False</span>
+<span class="p">):</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if items in a given list exist in a target list.</span>
+
+<span class="sd">    This function is used to validate whether all or none of the</span>
+<span class="sd">    items in a given list exist in a target list.</span>
+<span class="sd">    It helps to ensure that the input list contains only valid elements</span>
+<span class="sd">    that are present in the target list.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    input : str or list of str or None</span>
+<span class="sd">        The input list or a single string element. If it is a string,</span>
+<span class="sd">        it will be converted to a list containing</span>
+<span class="sd">        only that string element. If `None`, no validation will be performed.</span>
+<span class="sd">    input_name : str</span>
+<span class="sd">        The name of the input list used for displaying helpful error messages.</span>
+<span class="sd">    input_type : str</span>
+<span class="sd">        The type of items in the input list</span>
+<span class="sd">        (e.g., &quot;item&quot;, &quot;element&quot;, &quot;category&quot;).</span>
+<span class="sd">    target_list : list of str</span>
+<span class="sd">        The target list containing valid items that the input list elements</span>
+<span class="sd">        should be compared against.</span>
+<span class="sd">    need_exist : bool, optional (default=True)</span>
+<span class="sd">        Determines whether to check if elements exist in the</span>
+<span class="sd">        target list (True), or if they should not exist (False).</span>
+
+<span class="sd">     warning: bool, optional (default=False)</span>
+<span class="sd">        If true, generate a warning instead of raising an exception</span>
+
+
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the `input` is not a string or a list of strings.</span>
+<span class="sd">        If `need_exist` is True and any element of the input</span>
+<span class="sd">            list does not exist in the target list.</span>
+<span class="sd">        If `need_exist` is False and any element of the input</span>
+<span class="sd">            list exists in the target list.</span>
+
+
+<span class="sd">    Warns</span>
+<span class="sd">    -----</span>
+<span class="sd">    UserWarning</span>
+<span class="sd">        If the specified behavior is not present </span>
+<span class="sd">        and `warning` is True.</span>
+
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="nb">input</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="nb">input</span> <span class="o">=</span> <span class="p">[</span><span class="nb">input</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The &#39;</span><span class="si">{</span><span class="n">input_name</span><span class="si">}</span><span class="s2">&#39; parameter &quot;</span>
+                <span class="s2">&quot;should be a string or a list of strings.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">target_list_str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">target_list</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">need_exist</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">input</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">item</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">target_list</span><span class="p">:</span>
+                    <span class="n">message</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;The </span><span class="si">{</span><span class="n">input_type</span><span class="si">}</span><span class="s2"> &#39;</span><span class="si">{</span><span class="n">item</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                        <span class="s2">&quot;does not exist in the provided dataset.</span><span class="se">\n</span><span class="s2">&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;Existing </span><span class="si">{</span><span class="n">input_type</span><span class="si">}</span><span class="s2">s are:</span><span class="se">\n</span><span class="s2">&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">target_list_str</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">warning</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">input</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">target_list</span><span class="p">:</span>
+                    <span class="n">message</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;The </span><span class="si">{</span><span class="n">input_type</span><span class="si">}</span><span class="s2"> &#39;</span><span class="si">{</span><span class="n">item</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                        <span class="s2">&quot;exist in the provided dataset.</span><span class="se">\n</span><span class="s2">&quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;Existing </span><span class="si">{</span><span class="n">input_type</span><span class="si">}</span><span class="s2">s are:</span><span class="se">\n</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">warning</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">message</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="check_table"><a class="viewcode-back" href="../../spac.html#spac.utils.check_table">[docs]</a><span class="k">def</span> <span class="nf">check_table</span><span class="p">(</span>
+        <span class="n">adata</span><span class="p">,</span>
+        <span class="n">tables</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">should_exist</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">associated_table</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">warning</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform common error checks for table (layers) or derived tables (obsm) in</span>
+<span class="sd">    anndata related objects.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    adata : anndata.AnnData</span>
+<span class="sd">        The AnnData object to be checked.</span>
+
+<span class="sd">    tables : str or list of str, optional</span>
+<span class="sd">        The term &quot;table&quot; is equivalent to layer in anndata structure.</span>
+<span class="sd">        The layer(s) to check for existence in adata.layers.keys().</span>
+
+<span class="sd">    should_exist : bool, optional (default=True)</span>
+<span class="sd">        Determines whether to check if elements exist in the</span>
+<span class="sd">        target list (True), or if they should not exist (False).</span>
+
+<span class="sd">    associtated_table : bool, optional (default=False)</span>
+<span class="sd">        Determines whether to check if the passed tables names</span>
+<span class="sd">        should exist as layers or in obsm in the andata object.</span>
+
+<span class="sd">    warning : bool, optional (default=False)</span>
+<span class="sd">        If True, generate a warning instead of raising an exception.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If adata is not an instance of anndata.AnnData.</span>
+
+<span class="sd">    ValueError</span>
+<span class="sd">        If any of the specified layers, annotations, obsm, </span>
+<span class="sd">        or features do not exist.</span>
+
+
+<span class="sd">    Warns</span>
+<span class="sd">    -----</span>
+<span class="sd">    UserWarning</span>
+<span class="sd">        If any of the specified layers, annotations, obsm,</span>
+<span class="sd">        or features do not exist, and `warning` is True.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Check if adata is an instance of anndata.AnnData</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ad</span><span class="o">.</span><span class="n">AnnData</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="s2">&quot;Input dataset should be &quot;</span>
+            <span class="s2">&quot;an instance of anndata.AnnData, &quot;</span>
+            <span class="s2">&quot;please check the input dataset source.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Check for tables</span>
+    <span class="k">if</span> <span class="n">associated_table</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+        <span class="n">existing_tables</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">adata</span><span class="o">.</span><span class="n">layers</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">input_name</span> <span class="o">=</span> <span class="s2">&quot;tables&quot;</span>
+        <span class="n">input_type</span> <span class="o">=</span> <span class="s2">&quot;table&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">existing_tables</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">adata</span><span class="o">.</span><span class="n">obsm</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">input_name</span> <span class="o">=</span> <span class="s2">&quot;associated tables&quot;</span>
+        <span class="n">input_type</span> <span class="o">=</span> <span class="s2">&quot;associated table&quot;</span>
+
+    <span class="n">check_list_in_list</span><span class="p">(</span>
+            <span class="nb">input</span><span class="o">=</span><span class="n">tables</span><span class="p">,</span>
+            <span class="n">input_name</span><span class="o">=</span><span class="n">input_name</span><span class="p">,</span>
+            <span class="n">input_type</span><span class="o">=</span><span class="n">input_type</span><span class="p">,</span>
+            <span class="n">target_list</span><span class="o">=</span><span class="n">existing_tables</span><span class="p">,</span>
+            <span class="n">need_exist</span><span class="o">=</span><span class="n">should_exist</span><span class="p">,</span>
+            <span class="n">warning</span><span class="o">=</span><span class="n">warning</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="check_annotation"><a class="viewcode-back" href="../../spac.html#spac.utils.check_annotation">[docs]</a><span class="k">def</span> <span class="nf">check_annotation</span><span class="p">(</span>
+        <span class="n">adata</span><span class="p">,</span>
+        <span class="n">annotations</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">parameter_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">should_exist</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform common error checks for annotations in</span>
+<span class="sd">    anndata related objects.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    adata : anndata.AnnData</span>
+<span class="sd">        The AnnData object to be checked.</span>
+
+<span class="sd">    annotations :  str or list of str, optional</span>
+<span class="sd">        The annotation(s) to check for existence in adata.obs.</span>
+
+<span class="sd">    should_exist : bool, optional (default=True)</span>
+<span class="sd">        Determines whether to check if elements exist in the</span>
+<span class="sd">        target list (True), or if they should not exist (False).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If adata is not an instance of anndata.AnnData.</span>
+
+<span class="sd">    ValueError</span>
+<span class="sd">        If any of the specified layers, annotations, or features do not exist.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Check if adata is an instance of anndata.AnnData</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ad</span><span class="o">.</span><span class="n">AnnData</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="s2">&quot;Input dataset should be &quot;</span>
+            <span class="s2">&quot;an instance of anndata.AnnData, &quot;</span>
+            <span class="s2">&quot;please check the input dataset source.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Check for tables</span>
+    <span class="n">existing_annotation</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">parameter_name</span><span class="p">:</span>
+        <span class="n">parameter_name</span><span class="o">=</span><span class="s2">&quot;annotations&quot;</span>
+
+    <span class="n">check_list_in_list</span><span class="p">(</span>
+            <span class="nb">input</span><span class="o">=</span><span class="n">annotations</span><span class="p">,</span>
+            <span class="n">input_name</span><span class="o">=</span><span class="n">parameter_name</span><span class="p">,</span>
+            <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;annotation&quot;</span><span class="p">,</span>
+            <span class="n">target_list</span><span class="o">=</span><span class="n">existing_annotation</span><span class="p">,</span>
+            <span class="n">need_exist</span><span class="o">=</span><span class="n">should_exist</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="check_feature"><a class="viewcode-back" href="../../spac.html#spac.utils.check_feature">[docs]</a><span class="k">def</span> <span class="nf">check_feature</span><span class="p">(</span>
+        <span class="n">adata</span><span class="p">,</span>
+        <span class="n">features</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">should_exist</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform common error checks for features in</span>
+<span class="sd">    anndata related objects.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    adata : anndata.AnnData</span>
+<span class="sd">        The AnnData object to be checked.</span>
+
+<span class="sd">    features : str or list of str, optional</span>
+<span class="sd">        The feature(s) to check for existence in adata.var_names.</span>
+
+<span class="sd">    should_exist : bool, optional (default=True)</span>
+<span class="sd">        Determines whether to check if elements exist in the</span>
+<span class="sd">        target list (True), or if they should not exist (False).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If adata is not an instance of anndata.AnnData.</span>
+
+<span class="sd">    ValueError</span>
+<span class="sd">        If any of the specified layers, annotations, or features do not exist.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Check if adata is an instance of anndata.AnnData</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ad</span><span class="o">.</span><span class="n">AnnData</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="s2">&quot;Input dataset should be &quot;</span>
+            <span class="s2">&quot;an instance of anndata.AnnData, &quot;</span>
+            <span class="s2">&quot;please check the input dataset source.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Check for tables</span>
+    <span class="n">existing_features</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">var_names</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+    <span class="n">check_list_in_list</span><span class="p">(</span>
+            <span class="nb">input</span><span class="o">=</span><span class="n">features</span><span class="p">,</span>
+            <span class="n">input_name</span><span class="o">=</span><span class="s2">&quot;features&quot;</span><span class="p">,</span>
+            <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;feature&quot;</span><span class="p">,</span>
+            <span class="n">target_list</span><span class="o">=</span><span class="n">existing_features</span><span class="p">,</span>
+            <span class="n">need_exist</span><span class="o">=</span><span class="n">should_exist</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="check_column_name"><a class="viewcode-back" href="../../spac.html#spac.utils.check_column_name">[docs]</a><span class="k">def</span> <span class="nf">check_column_name</span><span class="p">(</span>
+    <span class="n">column_name</span><span class="p">,</span>
+    <span class="n">field_name</span><span class="p">,</span>
+    <span class="n">symbol_checklist</span><span class="o">=</span><span class="s2">&quot;!?,.&quot;</span><span class="p">,</span>
+<span class="p">):</span>
+
+    <span class="k">if</span> <span class="n">column_name</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The </span><span class="si">{</span><span class="n">column_name</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> contains a space character.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">symbol</span> <span class="ow">in</span> <span class="n">column_name</span> <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">symbol_checklist</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;One of the symbols in </span><span class="si">{</span><span class="n">symbol_checklist</span><span class="si">}</span><span class="s2"> is present in </span><span class="si">{</span><span class="n">column_name</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="text_to_others"><a class="viewcode-back" href="../../spac.html#spac.utils.text_to_others">[docs]</a><span class="k">def</span> <span class="nf">text_to_others</span><span class="p">(</span>
+    <span class="n">parameter</span><span class="p">,</span>
+    <span class="n">text</span><span class="o">=</span><span class="s2">&quot;None&quot;</span><span class="p">,</span>
+    <span class="n">to_None</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">to_False</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">to_True</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">to_Int</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">to_Float</span><span class="o">=</span><span class="kc">False</span>
+<span class="p">):</span>
+    <span class="k">def</span> <span class="nf">check_same</span><span class="p">(</span>
+        <span class="n">parameter</span><span class="p">,</span>
+        <span class="n">text</span><span class="p">,</span>
+        <span class="n">target</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="n">parameter</span> <span class="o">==</span> <span class="n">text</span><span class="p">:</span>
+            <span class="n">parameter</span> <span class="o">=</span> <span class="n">target</span>
+            <span class="k">return</span> <span class="n">parameter</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">parameter</span>
+
+    <span class="k">if</span> <span class="n">to_None</span><span class="p">:</span>
+        <span class="n">parameter</span> <span class="o">=</span> <span class="n">check_same</span><span class="p">(</span>
+            <span class="n">parameter</span><span class="p">,</span>
+            <span class="n">text</span><span class="p">,</span>
+            <span class="kc">None</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">to_False</span><span class="p">:</span>
+        <span class="n">parameter</span> <span class="o">=</span> <span class="n">check_same</span><span class="p">(</span>
+            <span class="n">parameter</span><span class="p">,</span>
+            <span class="n">text</span><span class="p">,</span>
+            <span class="kc">False</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">to_True</span><span class="p">:</span>
+        <span class="n">parameter</span> <span class="o">=</span> <span class="n">check_same</span><span class="p">(</span>
+            <span class="n">parameter</span><span class="p">,</span>
+            <span class="n">text</span><span class="p">,</span>
+            <span class="kc">True</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parameter</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">to_Int</span> <span class="ow">and</span> <span class="n">to_Float</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Please select one numeric conversion at a time, thank you.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">to_Int</span><span class="p">:</span>
+            <span class="n">parameter</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">parameter</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">to_Float</span><span class="p">:</span>
+            <span class="n">parameter</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">parameter</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parameter</span></div>
+
+
+<div class="viewcode-block" id="annotation_category_relations"><a class="viewcode-back" href="../../spac.html#spac.utils.annotation_category_relations">[docs]</a><span class="k">def</span> <span class="nf">annotation_category_relations</span><span class="p">(</span>
+    <span class="n">adata</span><span class="p">,</span>
+    <span class="n">source_annotation</span><span class="p">,</span>
+    <span class="n">target_annotation</span><span class="p">,</span>
+    <span class="n">prefix</span><span class="o">=</span><span class="kc">False</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculates the count of unique relationships between two</span>
+<span class="sd">    annotations in an AnnData object.</span>
+<span class="sd">    Relationship is defined as a unique pair of values, one from the</span>
+<span class="sd">    &#39;source_annotation&#39; and one from the &#39;target_annotation&#39;.</span>
+
+<span class="sd">    Returns a DataFrame with columns &#39;source_annotation&#39;, &#39;target_annotation&#39;,</span>
+<span class="sd">    &#39;count&#39;, &#39;percentage_source&#39;, and &#39;percentage_target&#39;.</span>
+<span class="sd">    Where &#39;count&#39; represents the number of occurrences of each relationship,</span>
+<span class="sd">    percentage_source represents the percentage of the count of link</span>
+<span class="sd">    over the total count of the source label, and percentage_target represents</span>
+<span class="sd">    the percentage of the count of link over the total count of the target.</span>
+
+<span class="sd">    If the `prefix` is set to True, it appends &quot;source_&quot; and &quot;target_&quot;</span>
+<span class="sd">    prefixes to labels in the &quot;source&quot; and &quot;target&quot; columns, respectively.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    adata : AnnData</span>
+<span class="sd">        The annotated data matrix of shape `n_obs` * `n_vars`.</span>
+<span class="sd">        Rows correspond to cells and columns to genes.</span>
+<span class="sd">    source_annotation : str</span>
+<span class="sd">        The name of the source annotation column in the `adata` object.</span>
+<span class="sd">    target_annotation : str</span>
+<span class="sd">        The name of the target annotation column in the `adata` object.</span>
+<span class="sd">    prefix : bool, optional</span>
+<span class="sd">        If True, appends &quot;source_&quot; and &quot;target_&quot; prefixes to the</span>
+<span class="sd">        &quot;source&quot; and &quot;target&quot; columns, respectively.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    relationships : pandas.DataFrame</span>
+<span class="sd">        A DataFrame with the source and target categories,</span>
+<span class="sd">        their counts and their percentages.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">check_annotation</span><span class="p">(</span>
+        <span class="n">adata</span><span class="p">,</span>
+        <span class="p">[</span>
+            <span class="n">source_annotation</span><span class="p">,</span>
+            <span class="n">target_annotation</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Iterate through annotation columns and calculate label relationships</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">((</span><span class="sa">f</span><span class="s2">&quot;Source: </span><span class="si">{</span><span class="n">source_annotation</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">((</span><span class="sa">f</span><span class="s2">&quot;Target: </span><span class="si">{</span><span class="n">target_annotation</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">source_annotation</span> <span class="o">==</span> <span class="n">source_annotation</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Source and Target are the same&quot;</span><span class="p">)</span>
+        <span class="n">target_annotation_copy</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">target_annotation</span><span class="si">}</span><span class="s2">_copy&quot;</span>
+        <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">target_annotation_copy</span><span class="p">]</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">target_annotation</span><span class="p">]</span>
+        <span class="n">target_annotation</span> <span class="o">=</span> <span class="n">target_annotation_copy</span>
+
+    <span class="c1"># Calculate label relationships between source and target columns</span>
+    <span class="n">relationships</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">source_annotation</span><span class="p">,</span> <span class="n">target_annotation</span><span class="p">]</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;count&#39;</span><span class="p">)</span>
+
+    <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="n">target_annotation_copy</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Calculate the total count for each source</span>
+    <span class="n">total_counts</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">relationships</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">source_annotation</span><span class="p">)[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="s1">&#39;sum&#39;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="c1"># Calculate the percentage of the total count for each source</span>
+    <span class="n">relationships</span><span class="p">[</span><span class="s1">&#39;percentage_source&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span><span class="n">relationships</span><span class="p">[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_counts</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">total_counts_target</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">relationships</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">target_annotation</span><span class="p">)[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="s1">&#39;sum&#39;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Calculate the percentage of the total count for each target</span>
+    <span class="n">relationships</span><span class="p">[</span><span class="s1">&#39;percentage_target&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span><span class="n">relationships</span><span class="p">[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_counts_target</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">relationships</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span>
+        <span class="n">columns</span><span class="o">=</span><span class="p">{</span>
+            <span class="n">source_annotation</span><span class="p">:</span> <span class="s2">&quot;source&quot;</span><span class="p">,</span>
+            <span class="n">target_annotation</span><span class="p">:</span> <span class="s2">&quot;target&quot;</span>
+        <span class="p">},</span>
+        <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;source&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;source&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;target&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;target&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s1">&#39;int64&#39;</span><span class="p">)</span>
+    <span class="n">relationships</span><span class="p">[</span>
+        <span class="s2">&quot;percentage_source&quot;</span>
+        <span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;percentage_source&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">relationships</span><span class="p">[</span>
+        <span class="s2">&quot;percentage_target&quot;</span>
+        <span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;percentage_target&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+
+    <span class="c1"># Reset the index of the label_relations DataFrame</span>
+    <span class="n">relationships</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">prefix</span><span class="p">:</span>
+        <span class="c1"># Add &quot;Source_&quot; prefix to the &quot;Source&quot; column</span>
+        <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;source&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span>
+            <span class="s2">&quot;source&quot;</span>
+        <span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="s2">&quot;source_&quot;</span> <span class="o">+</span> <span class="n">x</span><span class="p">)</span>
+
+        <span class="c1"># Add &quot;Target_&quot; prefix to the &quot;Target&quot; column</span>
+        <span class="n">relationships</span><span class="p">[</span><span class="s2">&quot;target&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">relationships</span><span class="p">[</span>
+            <span class="s2">&quot;target&quot;</span>
+        <span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="s2">&quot;target_&quot;</span> <span class="o">+</span> <span class="n">x</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">relationships</span></div>
+
+
+<div class="viewcode-block" id="color_mapping"><a class="viewcode-back" href="../../spac.html#spac.utils.color_mapping">[docs]</a><span class="k">def</span> <span class="nf">color_mapping</span><span class="p">(</span>
+        <span class="n">labels</span><span class="p">,</span>
+        <span class="n">color_map</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span>
+        <span class="n">opacity</span><span class="o">=</span><span class="mf">1.0</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Map a list of labels to colors using a specified</span>
+<span class="sd">    matplotlib colormap and opacity.</span>
+
+<span class="sd">    This function takes a list of labels and maps each one to a color from the</span>
+<span class="sd">    specified colormap. If the colormap is continuous, it linearly interpolates</span>
+<span class="sd">    between the colors. For discrete colormap, it calculates the number of</span>
+<span class="sd">    categories per color and interpolates between the colors.</span>
+
+<span class="sd">    For more information on colormaps, see:</span>
+<span class="sd">    https://matplotlib.org/stable/users/explain/colors/colormaps.html</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    labels : list</span>
+<span class="sd">        The list of labels to map to colors.</span>
+<span class="sd">    color_map : str, optional</span>
+<span class="sd">        The name of the colormap to use. Default is &#39;viridis&#39;.</span>
+<span class="sd">    opacity : float, optional</span>
+<span class="sd">        The opacity of the colors. Must be between 0 and 1. Default is 1.0.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    label_colors : list[str]</span>
+<span class="sd">        A list of strings, each representing an rgba color in CSS format.</span>
+<span class="sd">        The opacity of each color is set to the provided `opacity` value.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the opacity is not between 0 and 1,</span>
+<span class="sd">        or if the colormap name is invalid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">opacity</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Opacity must be between 0 and 1&quot;</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">cmap</span> <span class="o">=</span> <span class="n">cm</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="n">color_map</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid color map name: </span><span class="si">{</span><span class="n">color_map</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cmap</span><span class="o">.</span><span class="n">N</span> <span class="o">&gt;</span> <span class="mi">50</span><span class="p">:</span>  <span class="c1"># This is a continuous colormap</span>
+        <span class="n">label_colors</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">cmap</span><span class="p">(</span><span class="n">i</span> <span class="o">/</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span>
+        <span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># This is a discrete colormap</span>
+        <span class="c1"># Calculate the number of categories per color</span>
+        <span class="n">categories_per_color</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">/</span> <span class="n">cmap</span><span class="o">.</span><span class="n">N</span><span class="p">)</span>
+
+        <span class="c1"># Interpolate between the colors</span>
+
+        <span class="n">label_colors</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">cmap</span><span class="p">(</span><span class="n">i</span> <span class="o">/</span> <span class="p">(</span><span class="n">categories_per_color</span> <span class="o">*</span> <span class="n">cmap</span><span class="o">.</span><span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span>
+        <span class="p">]</span>
+
+    <span class="n">label_colors</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s1">&#39;rgba(</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">color</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="mi">255</span><span class="p">)</span><span class="si">}</span><span class="s1">,&#39;</span>
+        <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">color</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="mi">255</span><span class="p">)</span><span class="si">}</span><span class="s1">,&#39;</span>
+        <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">color</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">*</span><span class="mi">255</span><span class="p">)</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">opacity</span><span class="si">}</span><span class="s1">)&#39;</span>
+        <span class="k">for</span> <span class="n">color</span> <span class="ow">in</span> <span class="n">label_colors</span>
+    <span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">label_colors</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Fang Liu, Rui He, and George Zaki.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
