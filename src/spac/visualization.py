@@ -924,7 +924,6 @@ def spatial_plot(
         err_msg = "Spatial coordinates not found in the 'obsm' attribute."
         raise ValueError(err_msg)
 
-    # Extract annotation name
     annotation_names = adata.obs.columns.tolist()
     annotation_names_str = ", ".join(annotation_names)
 
@@ -934,7 +933,7 @@ def spatial_plot(
             f" Existing annotations are: {annotation_names_str}"
         raise ValueError(error_text)
 
-    # Extract feature name
+    # Extract annotation name
     if layer is None:
         layer = adata.X
     else:
@@ -987,7 +986,7 @@ def spatial_plot(
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
     
-
+    ##update here
     spatial_coords = adata.obsm['spatial']
     x_coords, y_coords = spatial_coords[:, 0], spatial_coords[:, 1]
 
@@ -997,7 +996,7 @@ def spatial_plot(
     else:
         colors = None
 
-
+    print(feature)
     scatter = ax.scatter(
         x=x_coords,
         y=y_coords,
@@ -1007,16 +1006,13 @@ def spatial_plot(
         **kwargs
     )
 
-
     if feature is not None:
         feature_index = adata.var_names.get_loc(feature)
         feature_values = adata.X[:, feature_index] if layer is None else adata.layers[layer][:, feature_index]
-
         if vmin == -999:
             vmin = np.min(feature_values)
         if vmax == -999:
             vmax = np.max(feature_values)
-
         scatter.set_clim(vmin, vmax)
 
     return ax
