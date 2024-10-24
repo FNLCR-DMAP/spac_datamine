@@ -110,12 +110,13 @@ def knn_clustering(
         k=50,
         output_annotation="knn",
         associated_table=None,
+        missing_label = "no_label",
         **kwargs):
     """
     Calculate knn clusters using sklearn KNeighborsClassifier
 
     The function will add these two attributes to `adata`:
-    `.obs["knn"]`
+    `.obs[output_annotation]`
         The assigned int64 class labels by KNeighborsClassifier
 
     `.uns["knn_features"]`
@@ -146,14 +147,16 @@ def knn_clustering(
         If set, use the corresponding key `adata.obsm` to calcuate the
         clustering. Takes priority over the layer argument.
 
+    missing_label : str or int
+        The value of missing annotations in adata.obs[annotation]
+
     Returns
     -------
-    adata : anndata.AnnData
-        Updated AnnData object with the knn clusters
-        stored in `adata.obs[output_annotation]`
+    None
+        adata is updated inplace 
     """
 
-    # 1 read in data, validate labels in the call here
+    # read in data, validate annotation in the call here
     _validate_transformation_inputs(
         adata=adata,
         layer=layer,
@@ -172,25 +175,26 @@ def knn_clustering(
         features=features
     )
 
-    # 2 we must split the labeled data from the unlabeled data
+    # boolean mask for labeled data
     annotation_data = adata.obs[annotation]
-    annotation_mask = annotation_data != "no_label"
+    annotation_mask = annotation_data != missing_label
+    # handle np.nan values
+    annotation_mask &= pd.notnull(annotation_data)
 
-    # check if there is a mix of labeled/unlabeled cells
+    # check that annotation is non-trivial
     if all(annotation_mask):
         raise ValueError("All cells are labeled. Please provide a mix of labeled and unlabeled data.")
     elif not any(annotation_mask):
         raise ValueError("No cells are labeled. Please provide a mix of labeled and unlabeled data.")
-         
+
+    # fit knn classifier to labeled data and predict on full dataset     
     data_labeled = data[annotation_mask]
     annotation_labeled = np.array(annotation_data[annotation_mask], dtype=int)
     
-    # 3 then we make the function call to sklearn  
     classifier = KNeighborsClassifier(n_neighbors = k, **kwargs)
     classifier.fit(data_labeled, annotation_labeled)
     knn_predict = classifier.predict(data)
-
-    # 4 this output stores the knn labels we just generated
+    # store output 
     adata.obs[output_annotation] =  pd.Categorical(knn_predict)
     adata.uns["knn_features"] = features
 
