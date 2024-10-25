@@ -132,11 +132,11 @@ def kmeans(
     layer : str, optional
         The layer to be used in calculating the kmeans clusters.
 
-    k : int, optional
-        The number of nearest neighbor to be used in creating the graph.
+     n_clusters: int, optional
+        The number of clusters/centroids to form.
 
-    seed : int, optional
-        Random seed for reproducibility.
+    random_state : int, optional
+        Determines random number generation for centroid initialization (used for reproducibility).
 
     output_annotation : str, optional
         The name of the output layer where the clusters are stored.
@@ -155,7 +155,7 @@ def kmeans(
     )
 
     if not isinstance(n_clusters, int) or n_clusters <= 0:
-        raise ValueError("`k` must be a positive integer")
+        raise ValueError("`n_clusters` must be a positive integer")
 
     data = _select_input_features(
         adata=adata,
@@ -167,7 +167,11 @@ def kmeans(
     if data.shape[0] < n_clusters:
         raise ValueError("`n_clusters` must be less than number of rows")
     
-    kmeans_out = KMeans(n_clusters=n_clusters, random_state=random_state, **kwargs).fit_predict(data)
+    kmeans_out = KMeans(
+                    n_clusters=n_clusters, 
+                    random_state=random_state, 
+                    **kwargs
+                ).fit_predict(data)
 
     adata.obs[output_annotation] = pd.Categorical(kmeans_out)
     adata.uns["kmeans_features"] = features
