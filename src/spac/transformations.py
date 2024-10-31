@@ -8,9 +8,11 @@ import scanpy.external as sce
 from spac.utils import check_table, check_annotation, check_feature
 from scipy import stats
 import umap as umap_lib
+from sklearn.neighbors import KNeighborsClassifier
 from scipy.sparse import issparse
 from typing import List, Union, Optional
 from sklearn.cluster import KMeans
+from numpy.lib import NumpyVersion
 
 
 # Configure logging
@@ -175,6 +177,99 @@ def kmeans(
 
     adata.obs[output_annotation] = pd.Categorical(kmeans_out)
     adata.uns["kmeans_features"] = features
+
+
+def knn_clustering(
+        adata,
+        features,
+        annotation,
+        layer=None,
+        k=50,
+        output_annotation="knn",
+        associated_table=None,
+        **kwargs):
+    """
+    Calculate knn clusters using sklearn KNeighborsClassifier
+
+    The function will add these two attributes to `adata`:
+    `.obs["knn"]`
+        The assigned int64 class labels by KNeighborsClassifier
+
+    `.uns["knn_features"]`
+        The features used to calculate the knn clusters
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+       The AnnData object.
+
+    features : list of str
+        The variables that would be included in creating the phenograph
+        clusters.
+    
+    annotation : str
+        The name of the annotation used for classifying the data
+
+    layer : str, optional
+        The layer to be used in calculating the phengraph clusters.
+
+    k : int, optional
+        The number of nearest neighbor to be used in creating the graph.
+
+    output_annotation : str, optional
+        The name of the output layer where the clusters are stored.
+
+    associated_table : str, optional
+        If set, use the corresponding key `adata.obsm` to calcuate the
+        clustering. Takes priority over the layer argument.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Updated AnnData object with the knn clusters
+        stored in `adata.obs[output_annotation]`
+    """
+
+    # 1 read in data, validate labels in the call here
+    _validate_transformation_inputs(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features,
+        annotation=annotation,
+    )
+
+    if not isinstance(k, int) or k <= 0:
+        raise ValueError("`k` must be a positive integer")
+    
+    data = _select_input_features(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features
+    )
+
+    # 2 we must split the labeled data from the unlabeled data
+    annotation_data = adata.obs[annotation]
+    annotation_mask = annotation_data != "no_label"
+
+    # check if there is a mix of labeled/unlabeled cells
+    if all(annotation_mask):
+        raise ValueError("All cells are labeled. Please provide a mix of labeled and unlabeled data.")
+    elif not any(annotation_mask):
+        raise ValueError("No cells are labeled. Please provide a mix of labeled and unlabeled data.")
+         
+    data_labeled = data[annotation_mask]
+    annotation_labeled = np.array(annotation_data[annotation_mask], dtype=int)
+    
+    # 3 then we make the function call to sklearn  
+    classifier = KNeighborsClassifier(n_neighbors = k, **kwargs)
+    classifier.fit(data_labeled, annotation_labeled)
+    knn_predict = classifier.predict(data)
+
+    # 4 this output stores the knn labels we just generated
+    adata.obs[output_annotation] =  pd.Categorical(knn_predict)
+    adata.uns["knn_features"] = features
 
 
 def get_cluster_info(adata, annotation, features=None, layer=None):
@@ -389,7 +484,8 @@ def _validate_transformation_inputs(
         adata: anndata,
         layer: Optional[str] = None,
         associated_table: Optional[str] = None,
-        features: Optional[Union[List[str], str]] = None
+        features: Optional[Union[List[str], str]] = None,
+        annotation: Optional[str] = None,
         ) -> None:
     """
     Validate inputs for transformation functions.
@@ -404,6 +500,8 @@ def _validate_transformation_inputs(
         Name of the key in `obsm` that contains the numpy array.
     features : list of str or str, optional
         Names of features to use for transformation.
+    annotation: str, optional
+        Name of annotation column in `obs` that contains class labels
 
     Raises
     ------
@@ -427,6 +525,9 @@ def _validate_transformation_inputs(
 
     if features is not None:
         check_feature(adata, features=features)
+    
+    if annotation is not None:
+        check_annotation(adata, annotations=annotation)
 
 
 def _select_input_features(adata: anndata,
@@ -506,6 +607,11 @@ def batch_normalize(adata, annotation, output_layer,
         If True, take the log2 of features before normalization.
         Ensure this is boolean.
     """
+    # Use utility functions for input validation
+    check_annotation(adata, annotations=annotation)
+    if input_layer:
+        check_table(adata, tables=input_layer)
+
     if not isinstance(log, bool):
         logger.error("Argument 'log' must be of type bool.")
         raise ValueError("Argument 'log' must be of type bool.")
@@ -761,7 +867,7 @@ def normalize_features_core(data, low_quantile=0.02, high_quantile=0.98,
     Normalize the features in a numpy array.
 
     Any entry lower than the value corresponding to low_quantile of the column
-    will be assigned a value of low_quantile, and entry that are greater than
+    will be assigned a value of low_quantile, and entries that are greater than
     high_quantile value will be assigned as value of high_quantile.
     Other entries will be normalized with
     (values - quantile min)/(quantile max - quantile min).
@@ -799,7 +905,7 @@ def normalize_features_core(data, low_quantile=0.02, high_quantile=0.98,
         If low_quantile is not less than high_quantile, or if they are
         out of the range [0, 1] and (0, 1], respectively.
     ValueError
-        If method is not one of the allowed values.
+        If interpolation is not one of the allowed values.
     """
     if not isinstance(high_quantile, (int, float)):
         raise TypeError(
@@ -832,9 +938,9 @@ def normalize_features_core(data, low_quantile=0.02, high_quantile=0.98,
             "Interpolation must be either 'nearest' or 'linear', "
             f"passed value is: {interpolation}")
 
-    # Version check for numpy
+    # Version check for numpy using NumpyVersion
     numpy_version = np.__version__
-    if numpy_version >= '1.22.0':
+    if NumpyVersion(numpy_version) >= NumpyVersion('1.22.0'):
         # Use 'method' argument for newer versions
         quantiles = np.quantile(
             data, [low_quantile, high_quantile], axis=0,
@@ -850,10 +956,13 @@ def normalize_features_core(data, low_quantile=0.02, high_quantile=0.98,
     qmin = quantiles[0]
     qmax = quantiles[1]
 
-    # Prevent division by zero in case qmax equals qmin
+    # Calculate range_values and identify zero ranges
     range_values = qmax - qmin
+    zero_range_mask = range_values == 0
+
+    # Prevent division by zero by setting zero ranges to 1 temporarily
     range_values = range_values.astype(float)
-    range_values[range_values == 0] = 1
+    range_values[zero_range_mask] = 1.0
 
     # Clip raw values to the quantile range before normalization
     clipped_data = np.clip(data, qmin, qmax)
@@ -861,8 +970,8 @@ def normalize_features_core(data, low_quantile=0.02, high_quantile=0.98,
     # Normalize the clipped values
     normalized_data = (clipped_data - qmin) / range_values
 
-    # Handle columns where qmax equals qmin
-    normalized_data[:, qmax == qmin] = 0
+    # Correct normalized data for zero ranges
+    normalized_data[:, zero_range_mask] = 0.0
 
     return normalized_data
 
