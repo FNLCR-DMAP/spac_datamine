@@ -1418,7 +1418,7 @@ def interative_spatial_plot(
     if region_id is not None and region_annotation is not None:
         subset_adata = subset_adata[subset_adata.obs[region_annotation] == region_id]
 
-    # Check for spatial coordinates
+    i# Check for spatial coordinates
     if not hasattr(subset_adata, 'obsm'):
         raise ValueError(".obsm attribute (Spatial Coordinate) does not exist in the input AnnData object. Please check.")
 

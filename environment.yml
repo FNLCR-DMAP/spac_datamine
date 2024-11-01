@@ -1,4 +1,4 @@
-name: spac
+name: spac_dev
 channels:
   - ohsu-comp-bio
   - conda-forge
