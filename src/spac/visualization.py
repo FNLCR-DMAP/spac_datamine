@@ -386,9 +386,9 @@ def tsne_plot(adata, color_column=None, ax=None, **kwargs):
     return fig, ax
 
 def cal_bin_num(num_rows):
-    bins = max(int(2 * (num_rows ** (1/3))), 1)
-    print(f'Automatically calculated number of bins is: {bins}')
-    return bins    
+        bins = max(int(2 * (num_rows ** (1/3))), 1)
+        print(f'Automatically calculated number of bins is: {bins}')
+        return bins    
 
 
 def histogram(adata, feature=None, annotation=None, layer=None,
@@ -1350,11 +1350,7 @@ def interative_spatial_plot(
     figure_width=12,
     figure_height=8,
     figure_dpi=200,
-    font_size=12,
-    slide_annotation=None,
-    region_annotation=None,
-    slide_id=None,
-    region_id=None
+    font_size=12
 
 ):
 
@@ -1403,34 +1399,28 @@ def interative_spatial_plot(
     if not isinstance(annotations, list):
         annotations = [annotations]
 
-#    for annotation in annotations:
-#        check_annotation(
-#           adata,
-#            annotations=annotation
-#        )
+    for annotation in annotations:
+        check_annotation(
+            adata,
+            annotations=annotation
+        )
 
-    # Subset based on slide_id if provided
-    subset_adata = adata
-    if slide_id is not None and slide_annotation is not None:
-        subset_adata = subset_adata[subset_adata.obs[slide_annotation] == slide_id]
+    if not hasattr(adata, 'obsm'):
+        error_msg = ".obsm attribute (Spatial Coordinate) does not exist " + \
+            "in the input AnnData object. Please check."
+        raise ValueError(error_msg)
 
-    # Subset based on region_id if provided
-    if region_id is not None and region_annotation is not None:
-        subset_adata = subset_adata[subset_adata.obs[region_annotation] == region_id]
+    if 'spatial' not in adata.obsm:
+        error_msg = 'The key "spatial" is missing from .obsm field, hence ' + \
+            "missing spatial coordniates. Please check."
+        raise ValueError(error_msg)
 
-    # Check for spatial coordinates
-    if not hasattr(subset_adata, 'obsm'):
-        raise ValueError(".obsm attribute (Spatial Coordinate) does not exist in the input AnnData object. Please check.")
-
-    if 'spatial' not in subset_adata.obsm:
-        raise ValueError('The key "spatial" is missing from .obsm field, hence missing spatial coordinates. Please check.')
-
-    spatial_coords = subset_adata.obsm['spatial']
+    spatial_coords = adata.obsm['spatial']
 
     extract_columns_raw = []
 
     for item in annotations:
-        extract_columns_raw.append(subset_adata.obs[item])
+        extract_columns_raw.append(adata.obs[item])
 
     extract_columns = []
 
