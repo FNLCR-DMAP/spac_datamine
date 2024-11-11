@@ -14,6 +14,7 @@ from spac.utils import check_feature, annotation_category_relations
 from spac.utils import color_mapping
 import logging
 import warnings
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -64,13 +65,18 @@ def visualize_2D_scatter(
         The axes of the plot.
     """
 
-    # Input validation
+    runtimes = {}
+
+    # 1. Input Validation
+    start_time = time.time()
     if not hasattr(x, "__iter__") or not hasattr(y, "__iter__"):
         raise ValueError("x and y must be array-like.")
     if len(x) != len(y):
         raise ValueError("x and y must have the same length.")
+    runtimes['Input Validation'] = time.time() - start_time
 
-    # Define color themes
+   # 2. Color Theme Setup
+    start_time = time.time()
     themes = {
         'fire': plt.get_cmap('inferno'),
         'viridis': plt.get_cmap('viridis'),
@@ -82,6 +88,7 @@ def visualize_2D_scatter(
         'darkred': ListedColormap(['#8B0000']),
         'darkgreen': ListedColormap(['#006400'])
     }
+    runtimes['Color Theme Setup'] = time.time() - start_time
 
     if theme and theme not in themes:
         error_msg = f"Theme '{theme}' not recognized. Please use a valid theme."
@@ -89,21 +96,27 @@ def visualize_2D_scatter(
 
     cmap = themes.get(theme, plt.get_cmap('viridis'))
 
-    # Determine point size
+    # 3. Point Size Determination
+    start_time = time.time()
     num_points = len(x)
     if point_size is None:
         point_size = 5000 / num_points
+    runtimes['Point Size Determination'] = time.time() - start_time
 
-    # Get figure size from kwargs or set defaults
+    # 4. Figure and Axis Setup
+    start_time = time.time()
     fig_width = kwargs.get('fig_width', 10)
     fig_height = kwargs.get('fig_height', 8)
     fontsize = kwargs.get('fontsize', 12)
+    runtimes['Figure and Axis Setup'] = time.time() - start_time
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     else:
         fig = ax.figure
 
+    # 5. Color Mapping and Scatter Plot
+    start_time = time.time()
     if adata is not None and (pin_color is not None or '_spac_colors' in adata.uns):
         if pin_color is not None:
             color_map = adata.uns.get(pin_color, {})
@@ -131,8 +144,10 @@ def visualize_2D_scatter(
     else:
         print("Warning: adata is None or neither pin_color nor '_spac_colors' was found. Defaulting to gray.")
         scatter = ax.scatter(x, y, c='gray', s=point_size, **kwargs)
+    runtimes['Color Mapping and Scatter Plot'] = time.time() - start_time
 
-    # If annotate_centers is True, annotate the centers of clusters
+    # 6. Annotating Centers
+    start_time = time.time()
     if annotate_centers and adata is not None:
         unique_labels = adata.obs['broad_cell_type'].unique()
         for label in unique_labels:
@@ -141,10 +156,11 @@ def visualize_2D_scatter(
                 center_x = np.mean(x[mask])
                 center_y = np.mean(y[mask])
                 ax.text(center_x, center_y, label, fontsize=fontsize, ha='center', va='center')
+    runtimes['Annotating Centers'] = time.time() - start_time
 
-    # Equal aspect ratio for the axes
+    # Final Plot Adjustments
+    start_time = time.time()
     ax.set_aspect('equal', 'datalim')
-
     # Set axis labels
     ax.set_xlabel(x_axis_title)
     ax.set_ylabel(y_axis_title)
@@ -152,8 +168,10 @@ def visualize_2D_scatter(
     # Set plot title
     if plot_title is not None:
         ax.set_title(plot_title)
+    
+    runtimes['Final Plot Adjustments'] = time.time() - start_time
 
-    return fig, ax
+    return fig, ax, runtimes
 
 
 def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
@@ -191,22 +209,30 @@ def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
     ax : matplotlib.axes.Axes
         The axes of the plot.
     """
+    runtimes = {}
 
+    # Step 1: Check if both annotation and feature are specified
+    start_time = time.time()
     # Check if both annotation and feature are specified, raise error if so
     if annotation and feature:
         raise ValueError(
             "Please specify either an annotation or a feature for coloring, "
             "not both.")
 
-    # Use utility functions for input validation
+    runtimes["Check Annotation and Feature"] = time.time() - start_time
+
+    # Step 2: Use utility functions for input validation
+    start_time = time.time()
     if layer:
         check_table(adata, tables=layer)
     if annotation:
         check_annotation(adata, annotations=annotation)
     if feature:
         check_feature(adata, features=[feature])
+    runtimes["Input Validation"] = time.time() - start_time
 
-    # Validate the method and check if the necessary data exists in adata.obsm
+    # Step 3: Validate the method and check if the necessary data exists
+    start_time = time.time()
     valid_methods = ['tsne', 'umap', 'pca']
     if method not in valid_methods:
         raise ValueError("Method should be one of {'tsne', 'umap', 'pca'}.")
@@ -217,11 +243,15 @@ def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
             f"{key} coordinates not found in adata.obsm. "
             f"Please run {method.upper()} before calling this function."
         )
+    runtimes["Method Validation"] = time.time() - start_time
 
-    # Extract the 2D coordinates
+    # Step 4: Extract the 2D coordinates
+    start_time = time.time()
     x, y = adata.obsm[key].T
+    runtimes["Coordinate Extraction"] = time.time() - start_time
 
-    # Determine coloring scheme
+    # Step 5: Determine coloring scheme
+    start_time = time.time()
     if annotation:
         color_values = adata.obs[annotation].astype('category').values
     elif feature:
@@ -229,10 +259,15 @@ def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
         color_values = data_source[:, adata.var_names == feature].squeeze()
     else:
         color_values = None
+    runtimes["Coloring Scheme Determination"] = time.time() - start_time
 
+    # Step 6: Create the plot
+    start_time = time.time()
     fig, ax = visualize_2D_scatter(x, y, ax=ax, labels=color_values, **kwargs)
+    runtimes["Plot Creation"] = time.time() - start_time
 
-    return fig, ax
+    # Return the plot and runtime details
+    return fig, ax, runtimes
 
 
 def tsne_plot(adata, color_column=None, ax=None, **kwargs):
@@ -366,7 +401,10 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         List of the axes of the histogram plots.
 
     """
+    runtimes = {}
 
+    # 1) Checking feature and annotation behavior
+    start_time = time.time()
     # If no feature or annotation is specified, apply default behavior
     if feature is None and annotation is None:
         # Default to the first feature in adata.var_names
@@ -377,7 +415,11 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             f"'{feature}'.",
             UserWarning
         )
+    runtimes["Default Feature Annotation Behavior"] =  time.time() - start_time
 
+    # 2) Checking utility functions for validation
+
+    start_time = time.time()
     # Use utility functions for input validation
     if layer:
         check_table(adata, tables=layer)
@@ -388,6 +430,10 @@ def histogram(adata, feature=None, annotation=None, layer=None,
     if group_by:
         check_annotation(adata, annotations=group_by)
 
+    runtimes["Utility functions for validation"] =  time.time() - start_time
+
+    # 2)Checking Layer Specification and getting data
+    start_time = time.time()
     # If layer is specified, get the data from that layer
     if layer:
         df = pd.DataFrame(
@@ -399,6 +445,8 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         )
 
     df = pd.concat([df, adata.obs], axis=1)
+
+    runtimes["Layer Specification and getting data"] =  time.time() - start_time
 
     if feature and annotation:
         raise ValueError("Cannot pass both feature and annotation,"
@@ -412,6 +460,10 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         fig, ax = plt.subplots()
 
     axs = []
+
+    # Grouping the data by lists and creating histogram itself
+
+    start_time = time.time()
 
     if group_by:
         groups = df[group_by].dropna().unique().tolist()
@@ -447,7 +499,9 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         sns.histplot(data=df, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
 
-    return fig, axs
+    runtimes["Grouping the Data and Creating Histogram"] =  time.time() - start_time
+
+    return fig, axs, runtimes
 
 
 def heatmap(adata, column, layer=None, **kwargs):
@@ -631,7 +685,9 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
     else:
         print("Insufficient data to plot a dendrogram.")
     """
+    runtimes = {}
 
+    start_time = time.time()
     # Use utility functions to check inputs
     check_annotation(adata, annotations=annotation)
     if features:
@@ -647,7 +703,10 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
     if not pd.api.types.is_categorical_dtype(adata.obs[annotation]):
         adata.obs[annotation] = adata.obs[annotation].astype('category')
 
-    # Calculate mean intensity
+    runtimes["Input Validation Checker"] = time.time() - start_time
+
+    # Mean Intensity Calculation
+    start_time = time.time()
     if layer:
         intensities = pd.DataFrame(
             adata.layers[layer],
@@ -660,7 +719,10 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
     labels = adata.obs[annotation]
     grouped = pd.concat([intensities, labels], axis=1).groupby(annotation)
     mean_intensity = grouped.mean()
+    
+    runtimes["Mean intensity calculated"] = time.time() - start_time
 
+    start_time = time.time()
     # If swap_axes is True, transpose the mean_intensity
     if swap_axes:
         mean_intensity = mean_intensity.T
@@ -683,8 +745,14 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
         row_cluster = cluster_annotations  # Rows are annotations
         col_cluster = cluster_feature  # Columns are features
 
+    runtimes["Mapping z scores and swapping axes"] = time.time() - start_time
+    
     # Use seaborn's clustermap for hierarchical clustering and
     # heatmap visualization.
+
+
+    # Clustermap and Hierarchical Clustering
+    start_time = time.time()
     clustergrid = sns.clustermap(
         mean_intensity,
         standard_scale=standard_scale,
@@ -696,7 +764,9 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
         cmap="viridis",
         **kwargs
     )
+    runtimes["Clustermap generation"] = time.time() - start_time
 
+    start_time = time.time()
     # Rotate x-axis tick labels if rotate_label is True
     if rotate_label:
         plt.setp(clustergrid.ax_heatmap.get_xticklabels(), rotation=45)
@@ -717,7 +787,9 @@ def hierarchical_heatmap(adata, annotation, features=None, layer=None,
         'col_linkage': dendro_col_data
     }
 
-    return mean_intensity, clustergrid, dendrogram_data
+    runtimes["Dendrogram extraction"] = time.time() - start_time
+
+    return mean_intensity, clustergrid, dendrogram_data, runtimes
 
 
 def threshold_heatmap(
@@ -1100,6 +1172,10 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
       annotation='cell_type', second_annotation='treatment')
     """
 
+    runtimes = {}
+
+    #1 Input checking via utility functions
+    start_time = time.time()
     # Use utility functions to check inputs
     if layer:
         check_table(adata, tables=layer)
@@ -1118,6 +1194,8 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
     else:
         v_orient = True
 
+    runtimes["Input Checking Via Utility Functions"] = time.time() - start_time
+
     # Validate ax instance
     if ax and not isinstance(ax, plt.Axes):
         raise TypeError("Input 'ax' must be a matplotlib.axes.Axes object.")
@@ -1127,6 +1205,9 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
         data_matrix = adata.layers[layer]
     else:
         data_matrix = adata.X
+
+    #2) Creating dataframes and annotiations
+    start_time = time.time()
 
     # Create a DataFrame from the data matrix with features as columns
     df = pd.DataFrame(data_matrix, columns=adata.var_names)
@@ -1147,6 +1228,10 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
         ([second_annotation] if second_annotation else [])
     ]
 
+    runtimes["Creating dataframes and annotiations"] = time.time() - start_time
+
+    #3) Creating the plot and plotting based off logic
+    start_time = time.time()
     # Create the plot
     if ax:
         fig = ax.get_figure()
@@ -1198,6 +1283,10 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
                 sns.boxplot(y=df[features[0]], ax=ax, **kwargs)
             ax.set_title("Single Boxplot")
 
+    runtimes["Creating the plot and plotting based off logic"] = time.time() - start_time
+
+    #4)  Checking plots and rotating ticks as well as showing
+    start_time = time.time()
     # Check if all data points are positive and non-zero
     all_positive = (df[features] > 0).all().all()
 
@@ -1209,7 +1298,9 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
     plt.tight_layout()
     # plt.show()
 
-    return fig, ax
+    runtimes["Checking plots and rotating ticks as well as showing"] = time.time() - start_time
+
+    return fig, ax, runtimes
 
 
 def interative_spatial_plot(
@@ -1266,7 +1357,10 @@ def interative_spatial_plot(
     to have spatial coordinates stored in its .obsm attribute
     under the 'spatial' key.
     """
+    runtimes = {}
 
+    # Input validation and annotation checking
+    start_time = time.time()
     if not isinstance(annotations, list):
         annotations = [annotations]
 
@@ -1285,6 +1379,11 @@ def interative_spatial_plot(
         error_msg = 'The key "spatial" is missing from .obsm field, hence ' + \
             "missing spatial coordniates. Please check."
         raise ValueError(error_msg)
+
+    runtimes["Input Validation and Annotation Check"] = time.time() - start_time
+
+    # Extract spatial coordinates and annotation columns
+    start_time = time.time()
 
     spatial_coords = adata.obsm['spatial']
 
@@ -1313,6 +1412,11 @@ def interative_spatial_plot(
     # Create the DataFrame
     df = pd.DataFrame(data)
 
+    runtimes["Data Extraction"] = time.time() - start_time
+
+    # Prepare the plot ranges
+    start_time = time.time()
+
     max_x_range = max(xcoord) * 1.1
     min_x_range = min(xcoord) * 0.9
     max_y_range = max(ycoord) * 1.1
@@ -1320,6 +1424,11 @@ def interative_spatial_plot(
 
     width_px = int(figure_width * figure_dpi)
     height_px = int(figure_height * figure_dpi)
+
+    runtimes["Range and Figure Preparation"] = time.time() - start_time
+
+    # Create the base plot using Plotly
+    start_time = time.time()
 
     main_fig = px.scatter(
         df,
@@ -1344,10 +1453,18 @@ def interative_spatial_plot(
 
             main_fig.add_traces(scatter_fig.data)
 
+    runtimes["Base Plot Creation"] = time.time() - start_time
+
+    # Reset the color attribute of the traces
+    start_time = time.time()
     # Reset the color attribute of the traces in combined_fig
     for trace in main_fig.data:
         trace.marker.color = None
 
+    runtimes["color attribute"] = time.time() - start_time
+
+    # Update layout and styling
+    start_time = time.time()
     main_fig.update_traces(
         mode='markers',
         marker=dict(
@@ -1406,7 +1523,10 @@ def interative_spatial_plot(
             )
         ]
     )
-    return main_fig
+
+    runtimes["Layout and Style Update"] = time.time() - start_time
+
+    return main_fig, runtimes
 
 
 def sankey_plot(
@@ -1448,6 +1568,10 @@ def sankey_plot(
     plotly.graph_objs._figure.Figure
         The generated Sankey plot.
     """
+    runtimes = {}
+
+    # Step 1: Get label relations
+    start_time = time.time()
 
     label_relations = annotation_category_relations(
         adata=adata,
@@ -1455,7 +1579,11 @@ def sankey_plot(
         target_annotation=target_annotation,
         prefix=prefix
     )
-    # Extract and prepare source and target labels
+    runtimes["Label Relations"] = time.time() - start_time
+
+    # Step 2: Extract source and target labels
+    start_time = time.time()
+
     source_labels = label_relations["source"].unique().tolist()
     target_labels = label_relations["target"].unique().tolist()
     all_labels = source_labels + target_labels
@@ -1464,6 +1592,10 @@ def sankey_plot(
     target_label_colors = color_mapping(target_labels, target_color_map)
     label_colors = source_label_colors + target_label_colors
 
+    runtimes["Label Extraction and Color Mapping"] = time.time() - start_time
+
+    # Step 3: Create label-to-index mapping and initialize lists for Sankey diagram
+    start_time = time.time()
     # Create a dictionary to map labels to indices
     label_to_index = {
         label: index for index, label in enumerate(all_labels)}
@@ -1485,6 +1617,10 @@ def sankey_plot(
         values.append(row['count'])
         link_colors.append(color_to_map[row['source']])
 
+    runtimes["Index Mapping and Link Data Preparation"] = time.time() - start_time
+
+    # Step 4: Generate Sankey plot
+    start_time = time.time()
     # Generate Sankey diagram
     # Calculate the x-coordinate for each label
     fig = go.Figure(go.Sankey(
@@ -1508,7 +1644,10 @@ def sankey_plot(
             size=sankey_font
         )
     ))
+    runtimes["Sankey Plot Creation"] = time.time() - start_time
 
+    # Step 5: Add hover template and custom data
+    start_time = time.time()
     fig.data[0].link.customdata = label_relations[
         ['percentage_source', 'percentage_target']
     ]
@@ -1518,7 +1657,10 @@ def sankey_plot(
         'Count: %{value}<extra></extra>'
     )
     fig.data[0].link.hovertemplate = hovertemplate
+    runtimes["Hover Template Setup"] = time.time() - start_time
 
+    # Step 6: Update layout for Sankey diagram
+    start_time = time.time()
     # Customize the Sankey diagram layout
     fig.update_layout(
         title_text=(
@@ -1538,4 +1680,7 @@ def sankey_plot(
         t=sankey_font * 3,
         b=sankey_font))
 
-    return fig
+    runtimes["Layout Update"] = time.time() - start_time
+
+    # Return the Sankey figure and the runtimes dictionary
+    return fig, runtimes
