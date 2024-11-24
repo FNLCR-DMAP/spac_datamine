@@ -46,7 +46,7 @@ def visualize_2D_scatter(
     x, y : array-like
         Coordinates of the data.
     labels : array-like, optional
-        Array of labels for the data points. Can be numerical or categorical.
+        Array of labels for the data points. Can be numerical or categorical
     point_size : float, optional
         Size of the points. If None, it will be automatically determined.
     theme : str, optional
