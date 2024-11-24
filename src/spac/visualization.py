@@ -1778,3 +1778,156 @@ def sankey_plot(
     runtimes = format_runtimes(runtimes)
     # Return the Sankey figure and the runtimes dictionary
     return fig, runtimes
+
+def relational_heatmap(
+        adata: anndata.AnnData,
+        source_annotation: str,
+        target_annotation: str,
+        color_map: str = "mint",
+        **kwargs
+):
+    """
+    Generates a relational heatmap from the given AnnData object.
+    The color map refers to matplotlib color maps, default is mint.
+    For more information on colormaps, see:
+    https://matplotlib.org/stable/users/explain/colors/colormaps.html
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        The annotated data matrix.
+    source_annotation : str
+        The source annotation to use for the relational heatmap.
+    target_annotation : str
+        The target annotation to use for the relational heatmap.
+    color_map : str
+        The color map to use for the relational heatmap. Default is mint.
+    **kwargs : dict, optional
+        Additional keyword arguments. For example, you can pass font_size=12.0.
+
+    Returns
+    -------
+    plotly.graph_objs._figure.Figure
+        The generated relational heatmap.
+    """
+    # Default font size
+    total_start_time = time.time()
+    runtimes = {}
+
+    font_size = kwargs.get('font_size', 12.0)
+    prefix = kwargs.get('prefix', True)
+
+    # Get the relationship between source and target annotations
+
+    label_relations = annotation_category_relations(
+            adata=adata,
+            source_annotation=source_annotation,
+            target_annotation=target_annotation,
+            prefix=prefix
+        )
+
+    runtimes["Label Relation Calculation"] = time.time() - start_time
+
+    # Pivot the data to create a matrix for the heatmap
+    start_time = time.time()
+    heatmap_matrix = label_relations.pivot(
+        index='source',
+        columns='target',
+        values='percentage_source'
+    )
+    x = list(heatmap_matrix.columns)
+    y = list(heatmap_matrix.index)
+
+    # Create text labels for the heatmap
+    label_relations['text_label'] = [
+        '{}%'.format(val) for val in label_relations["percentage_source"]
+    ]
+
+    runtimes["Data Pivot and Text Labeling"] = time.time() - start_time
+    
+    heatmap_matrix2 = label_relations.pivot(
+        index='source',
+        columns='target',
+        values='percentage_source'
+        )
+
+    start_time = time.time()
+    hover_template = 'Source: %{z}%<br>Target: %{customdata}%<extra></extra>'
+    # Ensure alignment of the text data with the heatmap matrix
+    z = list()
+    iter_list = list()
+    for y_item in y:
+        iter_list.clear()
+        for x_item in x:
+            z_data_point = label_relations[
+                (
+                    label_relations['target'] == x_item
+                ) & (
+                    label_relations['source'] == y_item
+                )
+            ]['percentage_source']
+            iter_list.append(
+                0 if len(z_data_point) == 0 else z_data_point.iloc[0]
+            )
+        z.append([_ for _ in iter_list])
+    
+    runtimes["Z Values Calculation"] = time.time() - start_time
+
+    # Create heatmap
+    start_time = time.time()
+    fig = ff.create_annotated_heatmap(
+        z=z,
+        colorscale=color_map,
+        customdata=heatmap_matrix2.values,
+        hovertemplate=hover_template
+    )
+    runtimes["Heatmap Creation"] = time.time() - start_time
+
+    start_time = time.time()
+    fig.update_layout(
+        overwrite=True,
+        xaxis=dict(
+            ticks="",
+            dtick=1,
+            side="top",
+            gridcolor="rgb(0, 0, 0)",
+            tickvals=list(range(len(x))),
+            ticktext=x
+        ),
+        yaxis=dict(
+            ticks="",
+            dtick=1,
+            ticksuffix="   ",
+            tickvals=list(range(len(y))),
+            ticktext=y
+        )
+    )
+
+    for i in range(len(fig.layout.annotations)):
+        fig.layout.annotations[i].font.size = font_size
+
+    fig.update_layout(
+        xaxis=dict(title=source_annotation),
+        yaxis=dict(title=target_annotation)
+    )
+
+    fig.update_layout(
+        margin=dict(
+            l=5,
+            r=5,
+            t=font_size * 2,
+            b=font_size * 2
+            )
+        )
+
+    fig.update_xaxes(
+        side="bottom",
+        tickangle=90
+    )
+    runtimes["Layout Adjustments"] = time.time() - start_time
+
+    runtimes["Total Time"] = time.time() - total_start_time
+    runtimes = format_runtimes(runtimes)
+    print(fig)
+
+    return fig, runtimes
