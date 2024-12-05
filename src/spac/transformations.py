@@ -1265,6 +1265,11 @@ def compare_annotations(adata, annotation_list,metric="adjusted_rand_score"):
         Should be adjusted_rand_score or normalized_mutual_info_score
         Default = "adjusted_rand_score"
 
+    Current: Created a matrix storing mutual information score for every combination of annotations in annotation_list
+        Output stored in AnnData in adata.uns["compare_annotations"]; annotation_list stored in AnnData in adata.uns["compare_annotations_list"]
+    TO DO: Add unit tests for correctness
+    Final Goal: Create a heatmap using Shiny to reflect matrix of mutual information comparing annotations
+
     """
 
     #Input Validation - there should be more than 1 annotation in order to compare annotations
