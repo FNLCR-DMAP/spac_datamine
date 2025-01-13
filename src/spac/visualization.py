@@ -391,7 +391,8 @@ def cal_bin_num(num_rows):
         return bins
 
 def histogram(adata, feature=None, annotation=None, layer=None,
-              group_by=None, together=False, ax=None, **kwargs):
+              group_by=None, together=False, ax=None,
+              x_log_scale=False, y_log_scale=False, **kwargs):
     """
     Plot the histogram of cells based on a specific feature from adata.X
     or annotation from adata.obs.
@@ -425,6 +426,13 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     ax : matplotlib.axes.Axes, optional
         An existing Axes object to draw the plot onto, optional.
+
+    x_log_scale : bool, default False
+        If True, the data will be transformed using np.log1p before plotting,
+        and the x-axis label will be adjusted accordingly.
+
+    y_log_scale : bool, default False
+        If True, the y-axis will be set to log scale.
 
     **kwargs
         Additional keyword arguments passed to seaborn histplot function.
@@ -509,6 +517,16 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     data_column = feature if feature else annotation
 
+    # Check for negative values and apply log1p transformation if x_log_scale is True
+    if x_log_scale:
+        if (df[data_column] < 0).any():
+            print(
+                "There are negative values in the data, disabling x_log_scale."
+            )
+            x_log_scale = False
+        else:
+            df[data_column] = np.log1p(df[data_column])
+
     if ax is not None:
         fig = ax.get_figure()
     else:
@@ -516,9 +534,15 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     axs = []
 
+    # Determine bins if not provided
     if 'bins' not in kwargs:
         num_rows = len(df)
         kwargs['bins'] = cal_bin_num(num_rows)
+
+    # Prepare the data for plotting
+    plot_data = df.dropna(subset=[data_column])
+
+    # Plotting with or without grouping
 
     if group_by:
         groups = df[group_by].dropna().unique().tolist()
@@ -548,13 +572,63 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                 ax_array = ax_array.flatten()
 
             for i, ax_i in enumerate(ax_array):
-                sns.histplot(data=df[df[group_by] == groups[i]].dropna(),
-                             x=data_column, ax=ax_i, **kwargs)
+                group_data = plot_data[plot_data[group_by] == groups[i]]
+
+                sns.histplot(data=group_data, x=data_column, ax=ax_i, **kwargs)
                 ax_i.set_title(groups[i])
+
+                # Set axis scales if y_log_scale is True
+                if y_log_scale:
+                    ax_i.set_yscale('log')
+
+                # Adjust x-axis label if x_log_scale is True
+                if x_log_scale:
+                    xlabel = f'log({data_column})'
+                else:
+                    xlabel = data_column
+                ax_i.set_xlabel(xlabel)
+
+                # Adjust y-axis label based on 'stat' parameter
+                stat = kwargs.get('stat', 'count')
+                ylabel_map = {
+                    'count': 'Count',
+                    'frequency': 'Frequency',
+                    'density': 'Density',
+                    'probability': 'Probability'
+                }
+                ylabel = ylabel_map.get(stat, 'Count')
+                if y_log_scale:
+                    ylabel = f'log({ylabel})'
+                ax_i.set_ylabel(ylabel)
+
                 axs.append(ax_i)
     else:
-        sns.histplot(data=df, x=data_column, ax=ax, **kwargs)
+        sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
+
+    # Set axis scales if y_log_scale is True
+    if y_log_scale:
+        ax.set_yscale('log')
+
+    # Adjust x-axis label if x_log_scale is True
+    if x_log_scale:
+        xlabel = f'log({data_column})'
+    else:
+        xlabel = data_column
+    ax.set_xlabel(xlabel)
+
+    # Adjust y-axis label based on 'stat' parameter
+    stat = kwargs.get('stat', 'count')
+    ylabel_map = {
+        'count': 'Count',
+        'frequency': 'Frequency',
+        'density': 'Density',
+        'probability': 'Probability'
+    }
+    ylabel = ylabel_map.get(stat, 'Count')
+    if y_log_scale:
+        ylabel = f'log({ylabel})'
+    ax.set_ylabel(ylabel)
 
     if len(axs) == 1:
         return fig, axs[0]
@@ -1324,9 +1398,6 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
                 ax.set_yticklabels([features[0]])  # Set the label for the tick
             ax.set_title("Single Boxplot")
 
-    if log_scale:
-        ax.set_yscale('log') if v_orient else ax.set_xscale('log')
-
     # Set x and y-axis labels
     if v_orient:
         xlabel = annotation if annotation else 'Feature'
@@ -1817,6 +1888,7 @@ def plot_ripley_l(
         annotation=None,
         regions=None,
         sims=False,
+        return_df=False,
         **kwargs):
     """
     Plot Ripley's L statistic for multiple bins and different regions
@@ -1833,6 +1905,8 @@ def plot_ripley_l(
         Default is None.
     sims : bool, optional
         Whether to plot the simulation results. Default is False.
+    return_df : bool, optional
+        Whether to return the DataFrame containing the Ripley's L results.
     kwargs : dict, optional
         Additional keyword arguments to pass to `seaborn.lineplot`.
 
@@ -1845,6 +1919,8 @@ def plot_ripley_l(
     -------
     ax : matplotlib.axes.Axes
         The Axes object containing the plot, which can be further modified.
+    df : pandas.DataFrame, optional
+        The DataFrame containing the Ripley's L results, if `return_df` is True.
 
     Example
     -------
@@ -1890,6 +1966,8 @@ def plot_ripley_l(
     # Create a figure and axes
     fig, ax = plt.subplots(figsize=(10, 10))
 
+    plot_data = []
+
     # Plot Ripley's L for each region
     for _, row in filtered_results.iterrows():
         region = row['region']  # Region label
@@ -1900,7 +1978,7 @@ def plot_ripley_l(
                f"\n Message: {row['message']}"
             )
             logging.warning(
-              message 
+              message
             )
             print(message)
             continue
@@ -1916,6 +1994,18 @@ def plot_ripley_l(
             label=f'{region}: {n_cells}, {int(area)}',
             ax=ax,
             **kwargs)
+
+        # Prepare plotted data to return if return_df is True
+        l_stat_data = row['ripley_l']['L_stat']
+        for _, stat_row in l_stat_data.iterrows():
+            plot_data.append({
+                'region': region,
+                'radius': stat_row['bins'],
+                'ripley(radius)': stat_row['stats'],
+                'region_area': area,
+                'n_center': n_center,
+                'n_neighbor': n_neighbors,
+            })
 
         if sims:
             errorbar = ("pi", 95)
@@ -1940,5 +2030,9 @@ def plot_ripley_l(
     # Set the horizontal axis lable
     ax.set_xlabel("Radii (pixles)")
     ax.set_ylabel("Ripley's L Statistic")
+
+    if return_df:
+        df = pd.DataFrame(plot_data)
+        return fig, df
 
     return fig
