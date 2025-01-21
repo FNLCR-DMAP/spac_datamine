@@ -7,6 +7,7 @@ import scanpy as sc
 import math
 import matplotlib.pyplot as plt
 import plotly.express as px
+import plotly.figure_factory as ff
 import plotly.graph_objects as go
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from spac.utils import check_table, check_annotation
@@ -336,7 +337,7 @@ def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
 
     # Step 6: Create the plot
     start_time = time.time()
-    fig, ax = visualize_2D_scatter(x, y, ax=ax, labels=color_values, **kwargs)
+    fig, ax, scatter_runtimes = visualize_2D_scatter(x, y, ax=ax, labels=color_values, **kwargs)
     runtimes["Plot Creation"] = time.time() - start_time
 
     # Log the total runtime for the entire function
@@ -344,9 +345,10 @@ def dimensionality_reduction_plot(adata, method, annotation=None, feature=None,
     runtimes["Total Runtime"] = total_runtime
 
     runtimes = format_runtimes(runtimes)
+    #scatter_runtimes holds runtimes inside scatter function
 
     # Return the plot and runtime details
-    return fig, ax,runtimes
+    return fig, ax, runtimes
 
 
 def tsne_plot(adata, color_column=None, ax=None, **kwargs):
@@ -1813,6 +1815,7 @@ def relational_heatmap(
     # Default font size
     total_start_time = time.time()
     runtimes = {}
+    start_time = time.time()
 
     font_size = kwargs.get('font_size', 12.0)
     prefix = kwargs.get('prefix', True)
