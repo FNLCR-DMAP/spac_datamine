@@ -392,6 +392,10 @@ def tsne_plot(adata, color_column=None, ax=None, **kwargs):
 
     return fig, ax
 
+def cal_bin_num(num_rows):
+        bins = max(int(2 * (num_rows ** (1/3))), 1)
+        print(f'Automatically calculated number of bins is: {bins}')
+        return bins
 
 def histogram(adata, feature=None, annotation=None, layer=None,
               group_by=None, together=False, ax=None,
@@ -537,6 +541,11 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     axs = []
 
+    # Determine bins if not provided
+    if 'bins' not in kwargs:
+        num_rows = len(df)
+        kwargs['bins'] = cal_bin_num(num_rows)
+
     # Prepare the data for plotting
     plot_data = df.dropna(subset=[data_column])
 
@@ -560,6 +569,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         kwargs['bins'] = cal_bin_num(num_rows)
 
     # Plotting with or without grouping
+
     if group_by:
         groups = df[group_by].dropna().unique().tolist()
         n_groups = len(groups)
