@@ -10,6 +10,7 @@ from scipy import stats
 import umap as umap_lib
 from scipy.sparse import issparse
 from typing import List, Union, Optional
+from sklearn.cluster import KMeans
 from numpy.lib import NumpyVersion
 import multiprocessing
 import parmap
@@ -102,6 +103,81 @@ def phenograph_clustering(
 
     adata.obs[output_annotation] = pd.Categorical(phenograph_out[0])
     adata.uns["phenograph_features"] = features
+
+def kmeans(
+        adata,
+        features,
+        layer=None,
+        n_clusters=50,
+        random_state=None,
+        output_annotation="kmeans",
+        associated_table=None,
+        **kwargs):
+    """
+    Calculate automatic clusters using kmeans.
+
+    The function will add these two attributes to `adata`:
+    `.obs["kmeans"]`
+        The assigned int64 class by kmeans
+
+    `.uns["kmeans_features"]`
+        The features used to calculate the kmeans clusters
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+       The AnnData object.
+
+    features : list of str
+        The variables that would be included in creating the kmeans
+        clusters.
+
+    layer : str, optional
+        The layer to be used in calculating the kmeans clusters.
+
+     n_clusters: int, optional
+        The number of clusters/centroids to form.
+
+    random_state : int, optional
+        Determines random number generation for centroid initialization (used for reproducibility).
+
+    output_annotation : str, optional
+        The name of the output layer where the clusters are stored.
+
+    associated_table : str, optional
+        If set, use the corresponding key `adata.obsm` to calcuate the
+        clusters. Takes priority over the layer argument.
+
+    """
+
+    _validate_transformation_inputs(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features
+    )
+
+    if not isinstance(n_clusters, int) or n_clusters <= 0:
+        raise ValueError("`n_clusters` must be a positive integer")
+
+    data = _select_input_features(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features
+    )
+
+    if data.shape[0] < n_clusters:
+        raise ValueError("`n_clusters` must be less than number of rows")
+    
+    kmeans_out = KMeans(
+                    n_clusters=n_clusters, 
+                    random_state=random_state, 
+                    **kwargs
+                ).fit_predict(data)
+
+    adata.obs[output_annotation] = pd.Categorical(kmeans_out)
+    adata.uns["kmeans_features"] = features
 
 
 def get_cluster_info(adata, annotation, features=None, layer=None):
