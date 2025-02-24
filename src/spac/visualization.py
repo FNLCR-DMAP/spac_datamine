@@ -587,44 +587,42 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             else:
                 ax_array = ax_array.flatten()
 
-            for i, ax_i in enumerate(ax_array):
-                group_data = plot_data[plot_data[group_by] == groups[i]]
+            group_data = plot_data[plot_data[group_by] == groups[i]]
 
-                hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
-                # Map the histogram function to the grid
-                hist.map(sns.histplot, data_column, **kwargs)
+            hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
+            # Map the histogram function to the grid
+            hist.map(sns.histplot, data_column, **kwargs)
 
-                # Set axis scales if y_log_scale is True
-                if y_log_scale:
-                    hist.set_yscale('log')
+            # Adjust x-axis label if x_log_scale is True
+            if x_log_scale:
+                hist.set_axis_labels(f'log({data_column})')
+            else:
+                hist.set_axis_labels(data_column)
 
-                # Adjust x-axis label if x_log_scale is True
-                if x_log_scale:
-                    hist.set_axis_labels(f'log({data_column})')
-                else:
-                    hist.set_axis_labels(data_column)
+            # Adjust y-axis label based on 'stat' parameter
+            stat = kwargs.get('stat', 'count')
+            ylabel_map = {
+                'count': 'Count',
+                'frequency': 'Frequency',
+                'density': 'Density',
+                'probability': 'Probability'
+            }
+            ylabel = ylabel_map.get(stat, 'Count')
 
-                # Adjust y-axis label based on 'stat' parameter
-                stat = kwargs.get('stat', 'count')
-                ylabel_map = {
-                    'count': 'Count',
-                    'frequency': 'Frequency',
-                    'density': 'Density',
-                    'probability': 'Probability'
-                }
-                ylabel = ylabel_map.get(stat, 'Count')
-                if y_log_scale:
-                    ylabel = f'log({ylabel})'
-                hist.set_axis_labels(y_var=ylabel)
+            # Set axis scales if y_log_scale is True
+            if y_log_scale:
+                ylabel = f'log({ylabel})'
+            hist.set_axis_labels(y_var=ylabel)
 
-                #titles for each facet
-                hist.set_titles("{col_name}")
+            #titles for each facet
+            hist.set_titles("{col_name}")
 
-                #ajust top margin
-                hist.fig.subplots_adjust(top=0.85, bottom=0.10, hspace=0.3)
+            #ajust top margin
+            hist.fig.subplots_adjust(top=0.85, bottom=0.10, hspace=0.3)
 
-                fig = hist.fig
-                return fig
+            fig = hist.fig
+            ax = ax_array
+            return fig, ax_array
     else:
         sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
