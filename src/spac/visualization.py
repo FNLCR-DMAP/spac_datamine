@@ -2141,6 +2141,7 @@ def interative_spatial_plot(
     # Set the discrete or continuous color parameters
     color_dict = None
     colorscale = None
+    title_substring = ""
     if annotations is not None:
         color_dict = get_defined_color_map(
             adata,
@@ -2148,8 +2149,13 @@ def interative_spatial_plot(
             annotations=annotations,
             colorscale=annotation_colorscale
         )
+        title_substring = f"Highlighted by {', '.join(annotations)}"
     elif feature is not None:
         colorscale = feature_colorscale
+        title_substring = (
+            f'Colored by "{feature}", '
+            f'table: "{layer if layer else "Original"}"'
+        )
 
     # Create the partial function with the common keyword arguments directly
     plot_main = partial(
@@ -2176,10 +2182,10 @@ def interative_spatial_plot(
 
         for strat_value in unique_stratification_values:
             condition = adata.obs[stratify_by] == strat_value
-            title_str = f"Highlighting {stratify_by}: {strat_value}"
+            title_str = f"Subsetting {stratify_by}: {strat_value}"
+
             indices = np.where(condition)[0]
             print(f"number of cells in the region: {len(adata.obsm['spatial'][indices])}")
-
             adata_subset = select_values(
                 data=adata,
                 annotation=stratify_by,
@@ -2192,7 +2198,7 @@ def interative_spatial_plot(
                 feature=feature,
                 layer=layer
             )
-
+            title_str += f"\n{title_substring}"
             # Call the partial function with additional arguments
             result = plot_main(
                 spatial_df,
@@ -2201,6 +2207,7 @@ def interative_spatial_plot(
             results.append(result)
     else:
         title_str = "Interactive Spatial Plot"
+        title_str += f"\n{title_substring}"
         spatial_df = prepare_spatial_dataframe(
             adata,
             annotations=annotations,
