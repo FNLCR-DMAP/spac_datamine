@@ -587,8 +587,6 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             else:
                 ax_array = ax_array.flatten()
 
-            group_data = plot_data[plot_data[group_by] == groups[i]]
-
             hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
             # Map the histogram function to the grid
             hist.map(sns.histplot, data_column, **kwargs)
@@ -621,8 +619,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             hist.fig.subplots_adjust(top=0.85, bottom=0.10, hspace=0.3)
 
             fig = hist.fig
-            ax = ax_array
-            return fig, ax_array
+            return fig, ax
     else:
         sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
