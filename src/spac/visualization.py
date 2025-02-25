@@ -589,7 +589,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
             hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
             # Map the histogram function to the grid
-            hist.map(sns.histplot, data_column, bins=kwargs['bins'], **kwargs)
+            hist.map(sns.histplot, data_column, **kwargs)
 
             # Adjust x-axis label if x_log_scale is True
             for ax in hist.axes.flat:
