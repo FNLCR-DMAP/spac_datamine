@@ -208,7 +208,7 @@ def visualize_2D_scatter(
     return fig, ax
 
 
-def embedded_scatter_plot(        
+def embedded_scatter_plot(     
         adata,
         method=None,
         annotation=None,
@@ -1979,12 +1979,12 @@ def boxplot(
 
 
 def boxplot_mid(
-        adata, 
-        annotation=None, 
+        adata,
+        annotation=None,
         layer=None,
-        ax=None, 
+        ax=None,
         features=None, 
-        log_scale=False, 
+        log_scale=False,
         showfliers=False,
         orient="v",
         figure_width=3.2,
@@ -2005,22 +2005,22 @@ def boxplot_mid(
         
     annotation : str, optional
         The name of the annotation column (e.g., cell type or sample condition) from `adata.obs` used to group the features. If `None`, no grouping is applied.
-        
+
     layer : str, optional
         The name of the layer from `adata.layers` to use. If `None`, `adata.X` is used.
-        
+
     ax : plotly.graph_objects.Figure, optional
         The figure to plot the boxplot onto. If `None`, a new figure is created.
-        
+
     features : list of str, optional
         The list of features (genes) to plot. If `None`, all features are included.
-        
+
     log_scale : bool, optional, default=False
         If True, the log1p transformation is applied to the features before plotting. This option is disabled if negative values are found in the features.
-        
+
     showfliers : bool, optional, default=False
         If True, outliers are displayed in the boxplot. If False, they are not shown.
-        
+
     orient : {"v", "h"}, optional, default="v"
         The orientation of the boxplots: "v" for vertical, "h" for horizontal.
 
@@ -2032,10 +2032,10 @@ def boxplot_mid(
 
     figure_dpi : int, optional
         DPI (dots per inch) for the figure. Default is 200.
-        
+
     interactive : bool, optional, default=False
         If True, the plot is interactive, allowing for zooming and panning. If False, the plot is static.
-        
+
     **kwargs : additional keyword arguments
         Any other keyword arguments passed to the underlying plotting function.
 
@@ -2043,7 +2043,7 @@ def boxplot_mid(
     -------
     fig : plotly.graph_objects.Figure or str
         The figure containing the generated boxplot, which could be either a Plotly figure object or a base64 encoded image of the figure.
-        
+
     data : pd.DataFrame
         A DataFrame containing the summary statistics used to create the boxplot.
     """
@@ -2051,11 +2051,11 @@ def boxplot_mid(
     def compute_boxplot_metrics(data: pd.DataFrame, annotation=None, showfliers: bool = None):
         """
         Compute boxplot-related statistical metrics for a given dataset.
-        
+
         This function calculates key boxplot percentiles and whiskers for grouped data. 
         If `showfliers` is enabled, it also identifies lower and upper outliers based on 
-        the Interquartile Range (IQR) method. 
-        
+        the Interquartile Range (IQR) method.
+
         Args:
             data: pd.DataFrame
                 The input DataFrame containing numerical data.
@@ -2065,16 +2065,16 @@ def boxplot_mid(
 
             showfliers: bool, optional
                 If True, includes outlier calculations; otherwise, only computes basic statistics.
-        
+
         Returns:
-            tuple: 
+            tuple:
                 - pd.DataFrame: A DataFrame containing computed metrics such as Q1, median, Q3, whiskers, and optionally outliers.
-        
+
         Example:
             >>> import pandas as pd
             >>> data = pd.DataFrame({'group': ['A', 'A', 'B', 'B'], 'value': [1, 2, 5, 6]})
             >>> compute_boxplot_metrics(data, annotation='group', showfliers=True)
-        
+
         Notes:
             - The function uses the IQR method (1.5xIQR) to determine outliers and whisker boundaries.
         """
