@@ -621,7 +621,8 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             hist.fig.subplots_adjust(left=.1, top=0.85, bottom=0.15, hspace=0.3)
 
             fig = hist.fig
-            return fig, ax
+            axs = hist.axes.flatten()
+            return fig, axs
     else:
         sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
