@@ -592,10 +592,12 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             hist.map(sns.histplot, data_column, **kwargs)
 
             # Adjust x-axis label if x_log_scale is True
-            if x_log_scale:
-                hist.set_axis_labels(f'log({data_column})')
-            else:
-                hist.set_axis_labels(data_column)
+            for ax in hist.axes.flat:
+                label = f'log({data_column})' if x_log_scale else data_column
+                ax.set_xlabel(label)
+
+            #set rotation of label
+            hist.set_xticklabels(rotation=20, ha='right')
 
             # Adjust y-axis label based on 'stat' parameter
             stat = kwargs.get('stat', 'count')
@@ -616,7 +618,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             hist.set_titles("{col_name}")
 
             #ajust top margin
-            hist.fig.subplots_adjust(top=0.85, bottom=0.10, hspace=0.3)
+            hist.fig.subplots_adjust(left=.1, top=0.85, bottom=0.15, hspace=0.3)
 
             fig = hist.fig
             return fig, ax
