@@ -1986,6 +1986,7 @@ def boxplot_interactive(
         figure_width=figure_width,
         figure_height=figure_height,
         figure_dpi=figure_dpi,
+        **kwargs,
     ):
         """
         Generate a boxplot from the provided summary statistics DataFrame.
@@ -2153,6 +2154,7 @@ def boxplot_interactive(
                         legendgroup=annotation_value,
                         showlegend=annotation_value
                         in unique_annotations,
+                        **kwargs,
                     )
                 )
                 # used to only show legend once per annotation group
@@ -2195,6 +2197,7 @@ def boxplot_interactive(
                             color=color_map[i]
                         ),
                         showlegend=True,
+                        **kwargs
                     )
                 )
 
@@ -2279,6 +2282,7 @@ def boxplot_interactive(
         figure_width=figure_width,
         figure_height=figure_height,
         figure_dpi=figure_dpi,
+        **kwargs,
     )
 
     # Prepare the base image or figure return value
