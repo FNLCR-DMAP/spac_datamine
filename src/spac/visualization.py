@@ -395,7 +395,7 @@ def tsne_plot(adata, color_column=None, ax=None, **kwargs):
 
 def histogram(adata, feature=None, annotation=None, layer=None,
               group_by=None, together=False, ax=None,
-              x_log_scale=False, y_log_scale=False, **kwargs):
+              x_log_scale=False, y_log_scale=False, facet=False, **kwargs):
     """
     Plot the histogram of cells based on a specific feature from adata.X
     or annotation from adata.obs.
@@ -436,6 +436,9 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     y_log_scale : bool, default False
         If True, the y-axis will be set to log scale.
+    
+    facet : bool, defaul False
+        If True, group by function outputs facet plots
 
     **kwargs
         Additional keyword arguments passed to seaborn histplot function.
@@ -576,55 +579,89 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                          ax=ax, **kwargs)
             axs.append(ax)
         else:
-            fig, ax_array = plt.subplots(
-                n_groups, 1, figsize=(5, 5 * n_groups)
-            )
+            if not facet:
+                for i, ax_i in enumerate(ax_array):
+                    group_data = plot_data[plot_data[group_by] == groups[i]]
 
-            # Convert a single Axes object to a list
-            # Ensure ax_array is always iterable
-            if n_groups == 1:
-                ax_array = [ax_array]
+                    sns.histplot(data=group_data, x=data_column, ax=ax_i, **kwargs)
+                    ax_i.set_title(groups[i])
+
+                    # Set axis scales if y_log_scale is True
+                    if y_log_scale:
+                        ax_i.set_yscale('log')
+
+                    # Adjust x-axis label if x_log_scale is True
+                    if x_log_scale:
+                        xlabel = f'log({data_column})'
+                    else:
+                        xlabel = data_column
+                    ax_i.set_xlabel(xlabel)
+
+                    # Adjust y-axis label based on 'stat' parameter
+                    stat = kwargs.get('stat', 'count')
+                    ylabel_map = {
+                        'count': 'Count',
+                        'frequency': 'Frequency',
+                        'density': 'Density',
+                        'probability': 'Probability'
+                    }
+                    ylabel = ylabel_map.get(stat, 'Count')
+                    if y_log_scale:
+                        ylabel = f'log({ylabel})'
+                    ax_i.set_ylabel(ylabel)
+
+                    axs.append(ax_i)
+                
             else:
-                ax_array = ax_array.flatten()
+                fig, ax_array = plt.subplots(
+                    n_groups, 1, figsize=(5, 5 * n_groups)
+                )
 
-            hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
-            # Map the histogram function to the grid
-            hist.map(sns.histplot, data_column, **kwargs)
+                # Convert a single Axes object to a list
+                # Ensure ax_array is always iterable
+                if n_groups == 1:
+                    ax_array = [ax_array]
+                else:
+                    ax_array = ax_array.flatten()
 
-            # Adjust x-axis label if x_log_scale is True
-            for ax in hist.axes.flat:
-                label = f'log({data_column})' if x_log_scale else data_column
-                ax.set_xlabel(label)
+                hist = sns.FacetGrid(plot_data, col=group_by, col_wrap=3, height=5, aspect=1.2)
+                # Map the histogram function to the grid
+                hist.map(sns.histplot, data_column, **kwargs)
 
-            #set rotation of label
-            hist.set_xticklabels(rotation=20, ha='right')
+                # Adjust x-axis label if x_log_scale is True
+                for ax in hist.axes.flat:
+                    label = f'log({data_column})' if x_log_scale else data_column
+                    ax.set_xlabel(label)
 
-            # Adjust y-axis label based on 'stat' parameter
-            stat = kwargs.get('stat', 'count')
-            ylabel_map = {
-                'count': 'Count',
-                'frequency': 'Frequency',
-                'density': 'Density',
-                'probability': 'Probability'
-            }
-            ylabel = ylabel_map.get(stat, 'Count')
+                #set rotation of label
+                hist.set_xticklabels(rotation=20, ha='right')
 
-            # Set axis scales if y_log_scale is True
-            if y_log_scale:
-                ylabel = f'log({ylabel})'
-            hist.set_axis_labels(y_var=ylabel)
+                # Adjust y-axis label based on 'stat' parameter
+                stat = kwargs.get('stat', 'count')
+                ylabel_map = {
+                    'count': 'Count',
+                    'frequency': 'Frequency',
+                    'density': 'Density',
+                    'probability': 'Probability'
+                }
+                ylabel = ylabel_map.get(stat, 'Count')
 
-            #titles for each facet
-            hist.set_titles("{col_name}")
+                # Set axis scales if y_log_scale is True
+                if y_log_scale:
+                    ylabel = f'log({ylabel})'
+                hist.set_axis_labels(y_var=ylabel)
 
-            #ajust top margin
-            hist.fig.subplots_adjust(left=.1, top=0.85, bottom=0.15, hspace=0.3)
+                #titles for each facet
+                hist.set_titles("{col_name}")
 
-            fig = hist.fig
-            axs = hist.axes.flatten()
-            if len(axs) == 1:
-                axs = axs[0]
-            return fig, axs
+                #ajust top margin
+                hist.fig.subplots_adjust(left=.1, top=0.85, bottom=0.15, hspace=0.3)
+
+                fig = hist.fig
+                axs = hist.axes.flatten()
+                if len(axs) == 1:
+                    axs = axs[0]
+                return fig, axs
     else:
         sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
