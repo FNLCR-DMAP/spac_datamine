@@ -580,6 +580,17 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             axs.append(ax)
         else:
             if not facet:
+                fig, ax_array = plt.subplots(
+                n_groups, 1, figsize=(5, 5 * n_groups)
+                )
+
+                # Convert a single Axes object to a list
+                # Ensure ax_array is always iterable
+                if n_groups == 1:
+                    ax_array = [ax_array]
+                else:
+                    ax_array = ax_array.flatten()
+                    
                 for i, ax_i in enumerate(ax_array):
                     group_data = plot_data[plot_data[group_by] == groups[i]]
 
