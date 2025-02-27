@@ -590,7 +590,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                     ax_array = [ax_array]
                 else:
                     ax_array = ax_array.flatten()
-                    
+
                 for i, ax_i in enumerate(ax_array):
                     group_data = plot_data[plot_data[group_by] == groups[i]]
 
@@ -669,10 +669,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                 hist.fig.subplots_adjust(left=.1, top=0.85, bottom=0.15, hspace=0.3)
 
                 fig = hist.fig
-                axs = hist.axes.flatten()
-                if len(axs) == 1:
-                    axs = axs[0]
-                return fig, axs
+                return fig
     else:
         sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         axs.append(ax)
