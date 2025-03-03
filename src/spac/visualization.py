@@ -37,38 +37,62 @@ logging.basicConfig(level=logging.INFO,
 
 
 def holoviews_scatter_with_regrid(x, y, bins=50,
-                                 interpolate=False,x_axis_title='Component 1', y_axis_title='Component 2',
+                                 interpolate=False, x_axis_title='Component 1', y_axis_title='Component 2',
                                  plot_title='Thermal map', width=500, height=500,
-                                 cmap='RdYlBu_r',  **kwargs):
+                                 cmap='RdYlBu_r', **kwargs):
     """
     Creates a 2D heatmap by binning scatter data into a 2D histogram,
     then creates an hv.Image from the binned data. If interpolation is enabled,
     an upsampled, bilinearly interpolated version is created via regrid and overlaid
     on top of the original heatmap.
 
-    Parameters:
-    - x, y: array-like, coordinates for the points.
-    - bins: int or tuple, number of bins for the 2D histogram.
-    - interpolate: bool, whether to overlay an interpolated version.
-    - x_axis_title: label for the x-axis.
-    - y_axis_title: label for the y-axis.
-    - plot_title: title for the plot.
-    - width, height: dimensions of the plot in pixels.
-    - cmap: colormap to use.
-    - **kwargs: additional keyword arguments passed to hv.Image.opts.
+    Parameters
+    ----------
+    x : array-like
+        Coordinates for the x-axis points.
+    y : array-like
+        Coordinates for the y-axis points.
+    bins : int or tuple, optional
+        Number of bins for the 2D histogram (default is 50).
+    interpolate : bool, optional
+        Whether to overlay an interpolated version of the heatmap (default is False).
+    x_axis_title : str, optional
+        Label for the x-axis (default is 'Component 1').
+    y_axis_title : str, optional
+        Label for the y-axis (default is 'Component 2').
+    plot_title : str, optional
+        Title for the plot (default is 'Thermal map').
+    width : int, optional
+        Width of the plot in pixels (default is 500).
+    height : int, optional
+        Height of the plot in pixels (default is 500).
+    cmap : str, optional
+        Colormap to use for the heatmap (default is 'RdYlBu_r').
+    **kwargs : dict
+        Additional keyword arguments passed to hv.Image.opts.
 
-    Returns:
-    - hv.Overlay: An overlay containing the original heatmap and,
-                  if interpolate is True, its regridded (interpolated) version.
+    Returns
+    -------
+    hv.Overlay
+        An overlay containing the original heatmap and, if interpolate is True,
+        its regridded (interpolated) version.
+
+    Raises
+    ------
+    ValueError
+        If `x` and `y` have different lengths.
     """
-
+    if not hasattr(x, "__iter__") or not hasattr(y, "__iter__"):
+        raise ValueError("x and y must be array-like.")
     if len(x) != len(y):
         raise ValueError("x and y must have the same length.")
-
+    # Validate colormap
+    if cmap not in plt.colormaps():
+        raise ValueError(f"Invalid colormap '{cmap}'. Please choose from: {plt.colormaps()}")
+    
     # Compute a 2D histogram of the scatter data.
     H, xedges, yedges = np.histogram2d(x, y, bins=bins)
-    # Transpose so that rows correspond to y values and columns to x values.
-    H = H.T
+    H = H.T  # Transpose so that rows correspond to y values and columns to x values.
 
     # Compute bin centers.
     xcenters = (xedges[:-1] + xedges[1:]) / 2
