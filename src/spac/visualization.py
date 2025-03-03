@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO,
 def holoviews_scatter_with_regrid(x, y, bins=50,
                                  interpolate=False, x_axis_title='Component 1', y_axis_title='Component 2',
                                  plot_title='Thermal map', width=500, height=500,
-                                 cmap='RdYlBu_r', **kwargs):
+                                 cmap='RdYlBu_r', color_scale='linear', **kwargs):
     """
     Creates a 2D heatmap by binning scatter data into a 2D histogram,
     then creates an hv.Image from the binned data. If interpolation is enabled,
@@ -94,6 +94,12 @@ def holoviews_scatter_with_regrid(x, y, bins=50,
     H, xedges, yedges = np.histogram2d(x, y, bins=bins)
     H = H.T  # Transpose so that rows correspond to y values and columns to x values.
 
+    #Apply color scaling
+    if color_scale == 'log':
+        H = np.log1p(H)
+    elif color_scale == 'normalize':
+       H = (H - np.min(H)) / (np.max(H) - np.min(H)) if np.max(H) != np.min(H) else H
+    
     # Compute bin centers.
     xcenters = (xedges[:-1] + xedges[1:]) / 2
     ycenters = (yedges[:-1] + yedges[1:]) / 2
