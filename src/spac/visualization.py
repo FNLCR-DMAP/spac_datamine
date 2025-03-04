@@ -35,17 +35,27 @@ import datashader as ds
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import numpy as np
+import pandas as pd
+import holoviews as hv
+from holoviews.operation.datashader import regrid
 
 def holoviews_scatter_with_regrid(x, y, bins=50,
-                                 interpolate=False, x_axis_title='Component 1', y_axis_title='Component 2',
-                                 plot_title='Thermal map', width=500, height=500,
-                                 cmap='RdYlBu_r', color_scale='linear', **kwargs):
+                                  interpolate=False, x_axis_title='Component 1', y_axis_title='Component 2',
+                                  plot_title='Thermal map', width=500, height=500,
+                                  cmap='RdYlBu_r', color_scale='linear', annotation=None, **kwargs):
     """
-    Creates a 2D heatmap by binning scatter data into a 2D histogram,
-    then creates an hv.Image from the binned data. If interpolation is enabled,
+    Create a 2D heatmap by binning scatter data into a 2D histogram.
+    
+    The function creates an hv.Image from the binned data. If interpolation is enabled,
     an upsampled, bilinearly interpolated version is created via regrid and overlaid
-    on top of the original heatmap.
-
+    on top of the original heatmap. Optionally, if an annotation is provided, it facets
+    the data by the unique labels in the annotation.
+    
+    The background color of each image is set to the darkest color of the colormap.
+    
     Parameters
     ----------
     x : array-like
@@ -55,7 +65,7 @@ def holoviews_scatter_with_regrid(x, y, bins=50,
     bins : int or tuple, optional
         Number of bins for the 2D histogram (default is 50).
     interpolate : bool, optional
-        Whether to overlay an interpolated version of the heatmap (default is False).
+        Whether to overlay an interpolated version (default is False).
     x_axis_title : str, optional
         Label for the x-axis (default is 'Component 1').
     y_axis_title : str, optional
@@ -67,60 +77,113 @@ def holoviews_scatter_with_regrid(x, y, bins=50,
     height : int, optional
         Height of the plot in pixels (default is 500).
     cmap : str, optional
-        Colormap to use for the heatmap (default is 'RdYlBu_r').
+        Colormap to use (default is 'RdYlBu_r').
+    color_scale : str, optional
+        Scaling method for the colormap. Options are 'linear' (default), 'log', or 'normalize'.
+    annotation : array-like, optional
+        Annotations (labels) for each point. Must be the same length as x and y.
     **kwargs : dict
         Additional keyword arguments passed to hv.Image.opts.
-
+    
     Returns
     -------
-    hv.Overlay
-        An overlay containing the original heatmap and, if interpolate is True,
-        its regridded (interpolated) version.
-
+    hv.Overlay or hv.Layout
+        If no annotation is provided, returns a single overlay containing the heatmap
+        (and its interpolated version if enabled). If annotation is provided, returns a
+        layout of multiple facets (one per unique annotation label).
+    
     Raises
     ------
     ValueError
-        If `x` and `y` have different lengths.
+        If x and y have different lengths, if annotation is provided and its length
+        does not match x and y, or if an invalid colormap is provided.
     """
-    if not hasattr(x, "__iter__") or not hasattr(y, "__iter__"):
-        raise ValueError("x and y must be array-like.")
-    if len(x) != len(y):
-        raise ValueError("x and y must have the same length.")
+    # Ensure x and y are numpy arrays
+    x = np.asarray(x)
+    y = np.asarray(y)
+    
     # Validate colormap
     if cmap not in plt.colormaps():
         raise ValueError(f"Invalid colormap '{cmap}'. Please choose from: {plt.colormaps()}")
     
-    # Compute a 2D histogram of the scatter data.
+    # Get the background color as the darkest color from the colormap (color for value 0)
+    bg_color = mcolors.to_hex(plt.get_cmap(cmap)(0))
+    
+    if annotation is not None:
+        annotation = np.asarray(annotation)
+        if len(annotation) != len(x):
+            raise ValueError("annotation must have the same length as x and y.")
+        
+        # Use pd.unique to handle mixed types without sorting issues
+        unique_labels = pd.unique(annotation)
+        facets = []
+        for label in unique_labels:
+            # Subset x and y for the current label
+            indices = np.where(annotation == label)[0]
+            x_subset = x[indices]
+            y_subset = y[indices]
+            facet_title = f"{plot_title} - {label}"
+            
+            # Compute a 2D histogram for the subset
+            H, xedges, yedges = np.histogram2d(x_subset, y_subset, bins=bins)
+            H = H.T  # Transpose so rows correspond to y values
+            
+            # Apply color scaling if necessary
+            if color_scale == 'log':
+                H = np.log1p(H)
+            elif color_scale == 'normalize':
+                H = (H - np.min(H)) / (np.max(H) - np.min(H)) if np.max(H) != np.min(H) else H
+            
+            # Compute bin centers
+            xcenters = (xedges[:-1] + xedges[1:]) / 2
+            ycenters = (yedges[:-1] + yedges[1:]) / 2
+            
+            # Create a DataFrame from the histogram
+            df = pd.DataFrame(H, index=ycenters, columns=xcenters)
+            
+            # Create the hv.Image and set the background color
+            img = hv.Image((df.columns, df.index, df))
+            img = img.opts(width=width, height=height, title=facet_title, cmap=cmap,
+                           tools=['hover'], colorbar=True, bgcolor=bg_color,
+                           xlabel=x_axis_title, ylabel=y_axis_title, **kwargs)
+            
+            if interpolate:
+                # Create an upsampled, bilinearly interpolated version of the image.
+                inter_img = regrid(img, upsample=True, interpolation='bilinear')
+                overlay = inter_img
+            else:
+                overlay = img
+            
+            facets.append(overlay)
+        # Combine the facets into a layout (3 columns by default)
+        return hv.Layout(facets).cols(3)
+    
+    # Single heatmap branch
     H, xedges, yedges = np.histogram2d(x, y, bins=bins)
-    H = H.T  # Transpose so that rows correspond to y values and columns to x values.
-
-    #Apply color scaling
+    H = H.T  # Transpose so rows correspond to y values
+    
     if color_scale == 'log':
         H = np.log1p(H)
     elif color_scale == 'normalize':
-       H = (H - np.min(H)) / (np.max(H) - np.min(H)) if np.max(H) != np.min(H) else H
+        H = (H - np.min(H)) / (np.max(H) - np.min(H)) if np.max(H) != np.min(H) else H
     
-    # Compute bin centers.
     xcenters = (xedges[:-1] + xedges[1:]) / 2
     ycenters = (yedges[:-1] + yedges[1:]) / 2
-
-    # Create a DataFrame from the histogram.
     df = pd.DataFrame(H, index=ycenters, columns=xcenters)
-
-    # Create an hv.Image using the DataFrame.
     img = hv.Image((df.columns, df.index, df))
     img = img.opts(width=width, height=height, title=plot_title, cmap=cmap,
-                   tools=['hover'], colorbar=True,
+                   tools=['hover'], colorbar=True, bgcolor=bg_color,
                    xlabel=x_axis_title, ylabel=y_axis_title, **kwargs)
-
+    
     if interpolate:
-        # Create an upsampled, bilinearly interpolated version of the image.
         inter_img = regrid(img, upsample=True, interpolation='bilinear')
         overlay = inter_img
     else:
         overlay = img
-
+    
     return overlay
+
+
 
 
 def visualize_2D_scatter(
