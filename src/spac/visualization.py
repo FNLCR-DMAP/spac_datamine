@@ -403,24 +403,24 @@ def histogram(adata, feature=None, annotation=None, layer=None,
     """
     Plot the histogram of cells based on a specific feature from adata.X
     or annotation from adata.obs.
-
+ 
     Parameters
     ----------
     adata : anndata.AnnData
         The AnnData object.
-
+ 
     feature : str, optional
         Name of continuous feature from adata.X to plot its histogram.
-
+ 
     annotation : str, optional
         Name of the annotation from adata.obs to plot its histogram.
-
+ 
     layer : str, optional
         Name of the layer in adata.layers to plot its histogram.
-
+ 
     group_by : str, default None
         Choose either to group the histogram by another column.
-
+ 
     together : bool, default False
         If True, and if group_by != None, create one plot combining all groups.
         If False, create separate histograms for each group.
@@ -430,17 +430,17 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         histogram by the number of elements in every group), use the `stat`
         parameter in **kwargs. For example, set `stat="probability"` to show
         the relative frequencies of each group.
-
+ 
     ax : matplotlib.axes.Axes, optional
         An existing Axes object to draw the plot onto, optional.
-
+ 
     x_log_scale : bool, default False
         If True, the data will be transformed using np.log1p before plotting,
         and the x-axis label will be adjusted accordingly.
-
+ 
     y_log_scale : bool, default False
         If True, the y-axis will be set to log scale.
-
+ 
     **kwargs
         Additional keyword arguments passed to seaborn histplot function.
         Key arguments include:
@@ -473,18 +473,18 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             (indicating bin edges). For example, `bins=10` will create 10 bins,
             while `bins=[0, 1, 2, 3]` will create bins [0,1), [1,2), [2,3].
             If not provided, the binning will be determined automatically.
-
+ 
     Returns
     -------
     fig : matplotlib.figure.Figure
         The created figure for the plot.
-
+ 
     axs : matplotlib.axes.Axes or list of Axes
         The Axes object(s) of the histogram plot(s). Returns a single Axes
         if only one plot is created, otherwise returns a list of Axes.
-
+ 
     """
-
+ 
     # If no feature or annotation is specified, apply default behavior
     if feature is None and annotation is None:
         # Default to the first feature in adata.var_names
@@ -495,7 +495,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             f"'{feature}'.",
             UserWarning
         )
-
+ 
     # Use utility functions for input validation
     if layer:
         check_table(adata, tables=layer)
@@ -505,7 +505,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         check_feature(adata, features=feature)
     if group_by:
         check_annotation(adata, annotations=group_by)
-
+ 
     # If layer is specified, get the data from that layer
     if layer:
         df = pd.DataFrame(
@@ -516,15 +516,15 @@ def histogram(adata, feature=None, annotation=None, layer=None,
              adata.X, index=adata.obs.index, columns=adata.var_names
         )
         layer = 'Original'
-
+ 
     df = pd.concat([df, adata.obs], axis=1)
-
+ 
     if feature and annotation:
         raise ValueError("Cannot pass both feature and annotation,"
                          " choose one.")
-
+ 
     data_column = feature if feature else annotation
-
+ 
     # Check for negative values and apply log1p transformation if x_log_scale is True
     if x_log_scale:
         if (df[data_column] < 0).any():
@@ -534,36 +534,84 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             x_log_scale = False
         else:
             df[data_column] = np.log1p(df[data_column])
-
+ 
     if ax is not None:
         fig = ax.get_figure()
     else:
         fig, ax = plt.subplots()
-
+ 
     axs = []
-
+ 
     # Prepare the data for plotting
     plot_data = df.dropna(subset=[data_column])
-
+ 
     # Bin calculation section
     # The default bin calculation used by sns.histo take quite
     # some time to compute for large number of points,
     # DMAP implemented the Rice rule for bin computation
-
+ 
     def cal_bin_num(
         num_rows
     ):
         bins = max(int(2*(num_rows ** (1/3))), 1)
         print(f'Automatically calculated number of bins is: {bins}')
         return(bins)
-
+ 
     num_rows = plot_data.shape[0]
-
+ 
     # Check if bins is being passed
     # If not, the in house algorithm will compute the number of bins
     if 'bins' not in kwargs:
         kwargs['bins'] = cal_bin_num(num_rows)
-
+ 
+    # Function to calculate histogram data
+    def calculate_histogram(data, bins, bin_edges=None):
+        """
+        Compute histogram data for numeric or categorical input.
+ 
+        Parameters:
+        - data (pd.Series): The input data to be binned.
+        - bins (int or sequence): Number of bins (if numeric) or unique categories
+            (if categorical).
+        - bin_edges (array-like, optional): Predefined bin edges for numeric data.
+        If None, automatic binning is used.
+ 
+        Returns:
+        - pd.DataFrame: A DataFrame containing the following columns:
+            - `count`:
+                Frequency of values in each bin.
+            - `bin_left`:
+                Left edge of each bin (for numeric data).
+            - `bin_right`:
+                Right edge of each bin (for numeric data).
+            - `bin_center`:
+                Center of each bin (for numeric data) or category labels
+                (for categorical data).
+            
+        """
+        # Check if the data is numeric or categorical
+        if pd.api.types.is_numeric_dtype(data):
+            if bin_edges is None:
+                # Compute histogram using automatic binning
+                hist, bin_edges = np.histogram(data, bins=bins)
+            else:
+                # Compute histogram using predefined bin edges
+                hist, _ = np.histogram(data, bins=bin_edges)
+            return pd.DataFrame({
+                'count': hist,
+                'bin_left': bin_edges[:-1],
+                'bin_right': bin_edges[1:],
+                'bin_center': (bin_edges[:-1] + bin_edges[1:]) / 2
+            })
+        else:
+            counts = data.value_counts().sort_index()
+            return pd.DataFrame({
+                'bin_center': counts.index,
+                'bin_left': counts.index,
+                'bin_right': counts.index,
+                'count': counts.values
+            })
+ 
     # Plotting with or without grouping
     if group_by:
         groups = df[group_by].dropna().unique().tolist()
@@ -571,14 +619,30 @@ def histogram(adata, feature=None, annotation=None, layer=None,
         if n_groups == 0:
             raise ValueError("There must be at least one group to create a"
                              " histogram.")
-
+ 
         if together:
+            # Compute global bin edges based on the entire dataset
+            global_bin_edges = np.histogram_bin_edges(plot_data[data_column],
+                                                      bins=kwargs['bins'])
+            hist_data = []
+            # Compute histograms for each group separately and combine them
+            for group in groups:
+                group_data = plot_data[
+                    plot_data[group_by] == group
+                ][data_column]
+                group_hist = calculate_histogram(group_data, kwargs['bins'],
+                                                 bin_edges=global_bin_edges)
+                group_hist[group_by] = group
+                hist_data.append(group_hist)
+            hist_data = pd.concat(hist_data, ignore_index=True)
+ 
             # Set default values if not provided in kwargs
             kwargs.setdefault("multiple", "stack")
             kwargs.setdefault("element", "bars")
-
-            sns.histplot(data=df.dropna(), x=data_column, hue=group_by,
-                         ax=ax, **kwargs)
+ 
+            
+            sns.histplot(data=hist_data, x='bin_center', weights='count',
+                         hue=group_by, ax=ax, **kwargs)
             # If plotting feature specify which layer
             if feature:
                 ax.set_title(f'Layer: {layer}')
@@ -587,35 +651,37 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             fig, ax_array = plt.subplots(
                 n_groups, 1, figsize=(5, 5 * n_groups)
             )
-
+ 
             # Convert a single Axes object to a list
             # Ensure ax_array is always iterable
             if n_groups == 1:
                 ax_array = [ax_array]
             else:
                 ax_array = ax_array.flatten()
-
+ 
             for i, ax_i in enumerate(ax_array):
-                group_data = plot_data[plot_data[group_by] == groups[i]]
-
-                sns.histplot(data=group_data, x=data_column, ax=ax_i, **kwargs)
+                group_data = plot_data[plot_data[group_by] ==
+                             groups[i]][data_column]
+                hist_data = calculate_histogram(group_data, kwargs['bins'])
+ 
+                sns.histplot(data=hist_data, x="bin_center", ax=ax_i, **kwargs)
                 # If plotting feature specify which layer
                 if feature:
                     ax_i.set_title(f'{groups[i]} with Layer: {layer}')
                 else:
                     ax_i.set_title(f'{groups[i]}')
-
+ 
                 # Set axis scales if y_log_scale is True
                 if y_log_scale:
                     ax_i.set_yscale('log')
-
+ 
                 # Adjust x-axis label if x_log_scale is True
                 if x_log_scale:
                     xlabel = f'log({data_column})'
                 else:
                     xlabel = data_column
                 ax_i.set_xlabel(xlabel)
-
+ 
                 # Adjust y-axis label based on 'stat' parameter
                 stat = kwargs.get('stat', 'count')
                 ylabel_map = {
@@ -628,26 +694,32 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                 if y_log_scale:
                     ylabel = f'log({ylabel})'
                 ax_i.set_ylabel(ylabel)
-
+ 
                 axs.append(ax_i)
     else:
-        sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
+        # Precompute histogram data for single plot
+        hist_data = calculate_histogram(plot_data[data_column], kwargs['bins'])
+        plot_kwargs = kwargs.copy()
+        if not pd.api.types.is_numeric_dtype(plot_data[data_column]):
+            plot_kwargs["weights"] = "count"
+        sns.histplot(data=hist_data, x='bin_center', ax=ax, **plot_kwargs)
+        ax.set_xlim(hist_data['bin_left'].min(), hist_data['bin_right'].max())
         # If plotting feature specify which layer
         if feature:
             ax.set_title(f'Layer: {layer}')
         axs.append(ax)
-
+ 
     # Set axis scales if y_log_scale is True
     if y_log_scale:
         ax.set_yscale('log')
-
+ 
     # Adjust x-axis label if x_log_scale is True
     if x_log_scale:
         xlabel = f'log({data_column})'
     else:
         xlabel = data_column
     ax.set_xlabel(xlabel)
-
+ 
     # Adjust y-axis label based on 'stat' parameter
     stat = kwargs.get('stat', 'count')
     ylabel_map = {
@@ -660,7 +732,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
     if y_log_scale:
         ylabel = f'log({ylabel})'
     ax.set_ylabel(ylabel)
-
+ 
     if len(axs) == 1:
         return fig, axs[0]
     else:
