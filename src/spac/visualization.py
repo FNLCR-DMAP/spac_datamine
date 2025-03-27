@@ -584,6 +584,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                 (for categorical data).
             
         """
+        
         # Check if the data is numeric or categorical
         if pd.api.types.is_numeric_dtype(data):
             if bin_edges is None:
