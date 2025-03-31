@@ -1007,11 +1007,7 @@ def get_defined_color_map(adata, defined_color_map=None, annotations=None,
                 "an annotation column must be specified."
             )
         # Generate a color mapping based on unique values in the annotation
-        if isinstance(annotations, str):
-            annotations = [annotations]
-        combined_labels = np.concatenate([adata.obs[col].astype(str).values for col in annotations])
-        unique_labels = np.unique(combined_labels)
-        
+        unique_labels = np.unique(adata.obs[annotations].values)
         return color_mapping(
             unique_labels,
             color_map=colorscale,
