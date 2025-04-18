@@ -2902,6 +2902,8 @@ def plot_ripley_l(
 
     # If specific regions are provided, filter them, otherwise plot all regions
     if regions is not None:
+        region_dtype = filtered_results['region'].dtype
+        regions = [region_dtype.type(r) for r in regions]
         filtered_results = filtered_results[
             filtered_results['region'].isin(regions)]
 
