@@ -9,21 +9,18 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
-import plotly.io as pio
+import plotly.colors as pc
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from spac.utils import check_table, check_annotation
 from spac.utils import check_feature, annotation_category_relations
 from spac.utils import check_label
-from spac.utils import get_defined_color_map
-from spac.utils import compute_boxplot_metrics
 from functools import partial
 from spac.utils import color_mapping, spell_out_special_characters
 from spac.data_utils import select_values
 import logging
 import warnings
-import base64
-import time
-import json
+import re
+import copy
 
 
 # Configure logging
@@ -35,7 +32,12 @@ def visualize_2D_scatter(
     x, y, labels=None, point_size=None, theme=None,
     ax=None, annotate_centers=False,
     x_axis_title='Component 1', y_axis_title='Component 2', plot_title=None,
-    color_representation=None, **kwargs
+    color_representation=None,
+    spot_size=None,  # New parameter for spatial plots
+    alpha=None,      # New parameter for spatial plots
+    vmin=None,       # New parameter for spatial plots
+    vmax=None,       # New parameter for spatial plots
+    **kwargs
 ):
     """
     Visualize 2D data using plt.scatter.
@@ -171,8 +173,10 @@ def visualize_2D_scatter(
 
         else:
             # If labels are continuous
+            # Continuous plotting logic (updated to handle vmin, vmax)
             scatter = ax.scatter(
-                x, y, c=labels, cmap=cmap, s=point_size, **kwargs
+                x, y, c=labels, cmap=cmap, s=point_size,
+                vmin=vmin, vmax=vmax, alpha=alpha, **kwargs
             )
             plt.colorbar(scatter, ax=ax)
             if color_representation is not None:
@@ -204,6 +208,10 @@ def dimensionality_reduction_plot(
         layer=None,
         ax=None,
         associated_table=None,
+        spot_size=20,  # New parameter for spatial plot
+        alpha=0.5,      # New parameter for spatial plot
+        vmin=-999,       # New parameter for spatial plot
+        vmax=-999,       # New parameter for spatial plot
         **kwargs):
     """
     Visualize scatter plot in PCA, t-SNE, UMAP, or associated table.
@@ -219,7 +227,6 @@ def dimensionality_reduction_plot(
     annotation : str, optional
         The name of the column in `adata.obs` to use for coloring
         the scatter plot points based on cell annotations.
-        Takes precedence over `feature`.
     feature : str, optional
         The name of the gene or feature in `adata.var_names` to use
         for coloring the scatter plot points based on feature expression.
@@ -260,12 +267,14 @@ def dimensionality_reduction_plot(
 
     # Validate the method and check if the necessary data exists in adata.obsm
     if associated_table is None:
-        valid_methods = ['tsne', 'umap', 'pca']
+        valid_methods = ['tsne', 'umap', 'pca', 'spatial'] #ADD in spatial as an option
         if method not in valid_methods:
-            raise ValueError("Method should be one of {'tsne', 'umap', 'pca'}"
+            raise ValueError("Method should be one of {'tsne', 'umap', 'pca', 'spatial'}"
                              f'. Got:"{method}"')
-
-        key = f'X_{method}'
+        if method == "spatial":
+            key = "spatial"
+        else:
+            key = f'X_{method}'
         if key not in adata.obsm.keys():
             raise ValueError(
                 f"{key} coordinates not found in adata.obsm. "
@@ -318,6 +327,12 @@ def dimensionality_reduction_plot(
         x_axis_title = 'UMAP 1'
         y_axis_title = 'UMAP 2'
         plot_title = f'UMAP-{color_representation}'
+    # insert spatial as an option
+    elif method == 'spatial':
+        x_axis_title = 'spatial 1'
+        y_axis_title = 'spatial 2'
+        plot_title = f'UMAP-{color_representation}'
+    #
     else:
         x_axis_title = f'{associated_table} 1'
         y_axis_title = f'{associated_table} 2'
@@ -329,6 +344,34 @@ def dimensionality_reduction_plot(
     kwargs.pop('plot_title', None)
     kwargs.pop('color_representation', None)
 
+    #handle spatial specific parameters
+    if method == 'spatial':
+        err_msg_spot_size = "Spot size must be an integer (e.g., 20)."
+        err_msg_alpha_type = "Alpha must be a float value (e.g., 0.5)."
+        err_msg_alpha_value = "Alpha must be between 0 and 1 (inclusive)."
+        err_msg_vmin = "vmin must be a numeric type (int or float)."
+        err_msg_vmax = "vmax must be a numeric type (int or float)."
+
+        if not isinstance(spot_size, int):
+            raise ValueError(err_msg_spot_size)
+
+        if not isinstance(alpha, float):
+            raise ValueError(err_msg_alpha_type)
+
+        if not (0 <= alpha <= 1):
+            raise ValueError(err_msg_alpha_value)
+
+
+        if vmin != -999 and not (
+            isinstance(vmin, float) or isinstance(vmin, int)
+        ):
+            raise ValueError(err_msg_vmin)
+
+        if vmax != -999 and not (
+            isinstance(vmax, float) or isinstance(vmax, int)
+        ):
+            raise ValueError(err_msg_vmax)
+
     fig, ax = visualize_2D_scatter(
         x=x,
         y=y,
@@ -338,7 +381,11 @@ def dimensionality_reduction_plot(
         y_axis_title=y_axis_title,
         plot_title=plot_title,
         color_representation=color_representation,
-        **kwargs
+        **kwargs,
+        spot_size=spot_size,
+        alpha=alpha,
+        vmin=vmin,
+        vmax=vmax,
     )
 
     return fig, ax
@@ -395,6 +442,7 @@ def tsne_plot(adata, color_column=None, ax=None, **kwargs):
     sc.pl.tsne(adata, ax=ax, **kwargs)
 
     return fig, ax
+
 
 def histogram(adata, feature=None, annotation=None, layer=None,
               group_by=None, together=False, ax=None,
@@ -472,20 +520,15 @@ def histogram(adata, feature=None, annotation=None, layer=None,
             (indicating bin edges). For example, `bins=10` will create 10 bins,
             while `bins=[0, 1, 2, 3]` will create bins [0,1), [1,2), [2,3].
             If not provided, the binning will be determined automatically.
-            Note, don't pass a numpy array, only python lists or strs/numbers.
 
     Returns
     -------
-    A dictionary containing the following:
-        fig : matplotlib.figure.Figure
-            The created figure for the plot.
+    fig : matplotlib.figure.Figure
+        The created figure for the plot.
 
-        axs : matplotlib.axes.Axes or list of Axes
-            The Axes object(s) of the histogram plot(s). Returns a single Axes
-            if only one plot is created, otherwise returns a list of Axes.
-        
-        df : pandas.DataFrame
-            DataFrame containing the data used for plotting the histogram.
+    axs : matplotlib.axes.Axes or list of Axes
+        The Axes object(s) of the histogram plot(s). Returns a single Axes
+        if only one plot is created, otherwise returns a list of Axes.
 
     """
 
@@ -529,8 +572,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
     data_column = feature if feature else annotation
 
-    # Check for negative values and apply log1p transformation if 
-    # x_log_scale is True
+    # Check for negative values and apply log1p transformation if x_log_scale is True
     if x_log_scale:
         if (df[data_column] < 0).any():
             print(
@@ -550,74 +592,6 @@ def histogram(adata, feature=None, annotation=None, layer=None,
     # Prepare the data for plotting
     plot_data = df.dropna(subset=[data_column])
 
-    # Bin calculation section
-    # The default bin calculation used by sns.histo take quite
-    # some time to compute for large number of points,
-    # DMAP implemented the Rice rule for bin computation
-
-    def cal_bin_num(
-        num_rows
-    ):
-        bins = max(int(2*(num_rows ** (1/3))), 1)
-        print(f'Automatically calculated number of bins is: {bins}')
-        return(bins)
-
-    num_rows = plot_data.shape[0]
-
-    # Check if bins is being passed
-    # If not, the in house algorithm will compute the number of bins
-    if 'bins' not in kwargs:
-        kwargs['bins'] = cal_bin_num(num_rows)
-
-    # Function to calculate histogram data
-    def calculate_histogram(data, bins, bin_edges=None):
-        """
-        Compute histogram data for numeric or categorical input.
-
-        Parameters:
-        - data (pd.Series): The input data to be binned.
-        - bins (int or sequence): Number of bins (if numeric) or unique categories 
-            (if categorical).
-        - bin_edges (array-like, optional): Predefined bin edges for numeric data. 
-        If None, automatic binning is used.
-
-        Returns:
-        - pd.DataFrame: A DataFrame containing the following columns:
-            - `count`: 
-                Frequency of values in each bin.
-            - `bin_left`: 
-                Left edge of each bin (for numeric data).
-            - `bin_right`: 
-                Right edge of each bin (for numeric data).
-            - `bin_center`: 
-                Center of each bin (for numeric data) or category labels 
-                (for categorical data).
-            
-        """
-        
-        # Check if the data is numeric or categorical
-        if pd.api.types.is_numeric_dtype(data):
-            if bin_edges is None:
-                # Compute histogram using automatic binning
-                hist, bin_edges = np.histogram(data, bins=bins)
-            else:
-                # Compute histogram using predefined bin edges
-                hist, _ = np.histogram(data, bins=bin_edges)
-            return pd.DataFrame({
-                'count': hist,
-                'bin_left': bin_edges[:-1],
-                'bin_right': bin_edges[1:],
-                'bin_center': (bin_edges[:-1] + bin_edges[1:]) / 2
-            })
-        else:
-            counts = data.value_counts().sort_index()
-            return pd.DataFrame({
-                'bin_center': counts.index, 
-                'bin_left': counts.index,
-                'bin_right': counts.index,
-                'count': counts.values
-            })
-
     # Plotting with or without grouping
     if group_by:
         groups = df[group_by].dropna().unique().tolist()
@@ -627,33 +601,12 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                              " histogram.")
 
         if together:
-            # Compute global bin edges based on the entire dataset
-            if pd.api.types.is_numeric_dtype(plot_data[data_column]):
-                global_bin_edges = np.histogram_bin_edges(
-                    plot_data[data_column], bins=kwargs['bins']
-                )
-            else:
-                global_bin_edges = plot_data[data_column].unique()
-
-            hist_data = []
-            # Compute histograms for each group separately and combine them
-            for group in groups:
-                group_data = plot_data[
-                    plot_data[group_by] == group
-                ][data_column]
-                group_hist = calculate_histogram(group_data, kwargs['bins'], 
-                                                 bin_edges=global_bin_edges)
-                group_hist[group_by] = group
-                hist_data.append(group_hist)
-            hist_data = pd.concat(hist_data, ignore_index=True)
-
             # Set default values if not provided in kwargs
             kwargs.setdefault("multiple", "stack")
             kwargs.setdefault("element", "bars")
 
-            
-            sns.histplot(data=hist_data, x='bin_center', weights='count', 
-                         hue=group_by, ax=ax, **kwargs)
+            sns.histplot(data=df.dropna(), x=data_column, hue=group_by,
+                         ax=ax, **kwargs)
             # If plotting feature specify which layer
             if feature:
                 ax.set_title(f'Layer: {layer}')
@@ -671,12 +624,9 @@ def histogram(adata, feature=None, annotation=None, layer=None,
                 ax_array = ax_array.flatten()
 
             for i, ax_i in enumerate(ax_array):
-                group_data = plot_data[plot_data[group_by] == 
-                             groups[i]][data_column]
-                hist_data = calculate_histogram(group_data, kwargs['bins'])
+                group_data = plot_data[plot_data[group_by] == groups[i]]
 
-                sns.histplot(data=hist_data, x="bin_center", ax=ax_i, 
-                    weights='count', **kwargs)
+                sns.histplot(data=group_data, x=data_column, ax=ax_i, **kwargs)
                 # If plotting feature specify which layer
                 if feature:
                     ax_i.set_title(f'{groups[i]} with Layer: {layer}')
@@ -709,20 +659,7 @@ def histogram(adata, feature=None, annotation=None, layer=None,
 
                 axs.append(ax_i)
     else:
-        # Precompute histogram data for single plot
-        hist_data = calculate_histogram(plot_data[data_column], kwargs['bins'])
-        if pd.api.types.is_numeric_dtype(plot_data[data_column]):
-            ax.set_xlim(hist_data['bin_left'].min(), 
-            hist_data['bin_right'].max())
-        
-        sns.histplot(
-            data=hist_data, 
-            x='bin_center',
-            weights="count", 
-            ax=ax, 
-            **kwargs
-        )
-        
+        sns.histplot(data=plot_data, x=data_column, ax=ax, **kwargs)
         # If plotting feature specify which layer
         if feature:
             ax.set_title(f'Layer: {layer}')
@@ -753,9 +690,10 @@ def histogram(adata, feature=None, annotation=None, layer=None,
     ax.set_ylabel(ylabel)
 
     if len(axs) == 1:
-        return {"fig": fig, "axs": axs[0], "df": plot_data}
+        return fig, axs[0]
     else:
-        return {"fig": fig, "axs": axs, "df": plot_data}
+        return fig, axs
+
 
 def heatmap(adata, column, layer=None, **kwargs):
     """
@@ -1162,187 +1100,6 @@ def threshold_heatmap(
     return heatmap_plot
 
 
-def spatial_plot(
-        adata,
-        spot_size,
-        alpha,
-        vmin=-999,
-        vmax=-999,
-        annotation=None,
-        feature=None,
-        layer=None,
-        ax=None,
-        **kwargs
-):
-    """
-    Generate the spatial plot of selected features
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        The AnnData object containing target feature and spatial coordinates.
-
-    spot_size : int
-        The size of spot on the spatial plot.
-    alpha : float
-        The transparency of spots, range from 0 (invisible) to 1 (solid)
-    vmin : float or int
-        The lower limit of the feature value for visualization
-    vmax : float or int
-        The upper limit of the feature value for visualization
-    feature : str
-        The feature to visualize on the spatial plot.
-        Default None.
-    annotation : str
-        The annotation to visualize in the spatial plot.
-        Can't be set with feature, default None.
-    layer : str
-        Name of the AnnData object layer that wants to be plotted.
-        By default adata.raw.X is plotted.
-    ax : matplotlib.axes.Axes
-        The matplotlib Axes containing the analysis plots.
-        The returned ax is the passed ax or new ax created.
-        Only works if plotting a single component.
-    **kwargs
-        Arguments to pass to matplotlib.pyplot.scatter()
-    Returns
-    -------
-        Single or a list of class:`~matplotlib.axes.Axes`.
-    """
-
-    err_msg_layer = "The 'layer' parameter must be a string, " + \
-        f"got {str(type(layer))}"
-    err_msg_feature = "The 'feature' parameter must be a string, " + \
-        f"got {str(type(feature))}"
-    err_msg_annotation = "The 'annotation' parameter must be a string, " + \
-        f"got {str(type(annotation))}"
-    err_msg_feat_annotation_coe = "Both annotation and feature are passed, " +\
-        "please provide sinle input."
-    err_msg_feat_annotation_non = "Both annotation and feature are None, " + \
-        "please provide single input."
-    err_msg_spot_size = "The 'spot_size' parameter must be an integer, " + \
-        f"got {str(type(spot_size))}"
-    err_msg_alpha_type = "The 'alpha' parameter must be a float," + \
-        f"got {str(type(alpha))}"
-    err_msg_alpha_value = "The 'alpha' parameter must be between " + \
-        f"0 and 1 (inclusive), got {str(alpha)}"
-    err_msg_vmin = "The 'vmin' parameter must be a float or an int, " + \
-        f"got {str(type(vmin))}"
-    err_msg_vmax = "The 'vmax' parameter must be a float or an int, " + \
-        f"got {str(type(vmax))}"
-    err_msg_ax = "The 'ax' parameter must be an instance " + \
-        f"of matplotlib.axes.Axes, got {str(type(ax))}"
-
-    if adata is None:
-        raise ValueError("The input dataset must not be None.")
-
-    if not isinstance(adata, anndata.AnnData):
-        err_msg_adata = "The 'adata' parameter must be an " + \
-            f"instance of anndata.AnnData, got {str(type(adata))}."
-        raise ValueError(err_msg_adata)
-
-    if layer is not None and not isinstance(layer, str):
-        raise ValueError(err_msg_layer)
-
-    if layer is not None and layer not in adata.layers.keys():
-        err_msg_layer_exist = f"Layer {layer} does not exists, " + \
-            f"available layers are {str(adata.layers.keys())}"
-        raise ValueError(err_msg_layer_exist)
-
-    if feature is not None and not isinstance(feature, str):
-        raise ValueError(err_msg_feature)
-
-    if annotation is not None and not isinstance(annotation, str):
-        raise ValueError(err_msg_annotation)
-
-    if annotation is not None and feature is not None:
-        raise ValueError(err_msg_feat_annotation_coe)
-
-    if annotation is None and feature is None:
-        raise ValueError(err_msg_feat_annotation_non)
-
-    if 'spatial' not in adata.obsm_keys():
-        err_msg = "Spatial coordinates not found in the 'obsm' attribute."
-        raise ValueError(err_msg)
-
-    # Extract annotation name
-    annotation_names = adata.obs.columns.tolist()
-    annotation_names_str = ", ".join(annotation_names)
-
-    if annotation is not None and annotation not in annotation_names:
-        error_text = f'The annotation "{annotation}"' + \
-            'not found in the dataset.' + \
-            f" Existing annotations are: {annotation_names_str}"
-        raise ValueError(error_text)
-
-    # Extract feature name
-    if layer is None:
-        layer_process = adata.X
-    else:
-        layer_process = adata.layers[layer]
-
-    feature_names = adata.var_names.tolist()
-
-    if feature is not None and feature not in feature_names:
-        error_text = f"Feature {feature} not found," + \
-            " please check the sample metadata."
-        raise ValueError(error_text)
-
-    if not isinstance(spot_size, int):
-        raise ValueError(err_msg_spot_size)
-
-    if not isinstance(alpha, float):
-        raise ValueError(err_msg_alpha_type)
-
-    if not (0 <= alpha <= 1):
-        raise ValueError(err_msg_alpha_value)
-
-    if vmin != -999 and not (
-        isinstance(vmin, float) or isinstance(vmin, int)
-    ):
-        raise ValueError(err_msg_vmin)
-
-    if vmax != -999 and not (
-        isinstance(vmax, float) or isinstance(vmax, int)
-    ):
-        raise ValueError(err_msg_vmax)
-
-    if ax is not None and not isinstance(ax, plt.Axes):
-        raise ValueError(err_msg_ax)
-
-    if feature is not None:
-
-        feature_index = feature_names.index(feature)
-        feature_annotation = feature + "spatial_plot"
-        if vmin == -999:
-            vmin = np.min(layer_process[:, feature_index])
-        if vmax == -999:
-            vmax = np.max(layer_process[:, feature_index])
-        adata.obs[feature_annotation] = layer_process[:, feature_index]
-        color_region = feature_annotation
-    else:
-        color_region = annotation
-        vmin = None
-        vmax = None
-
-    if ax is None:
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-
-    ax = sc.pl.spatial(
-        adata=adata,
-        layer=layer,
-        color=color_region,
-        spot_size=spot_size,
-        alpha=alpha,
-        vmin=vmin,
-        vmax=vmax,
-        ax=ax,
-        show=False,
-        **kwargs)
-
-    return ax
-
-
 def boxplot(adata, annotation=None, second_annotation=None, layer=None,
             ax=None, features=None, log_scale=False, **kwargs):
     """
@@ -1536,505 +1293,18 @@ def boxplot(adata, annotation=None, second_annotation=None, layer=None,
     return fig, ax, df
 
 
-def boxplot_interactive(
+def interative_spatial_plot(
     adata,
-    annotation=None,
-    layer=None,
-    ax=None,
-    features=None,
-    showfliers=None,
-    log_scale=False,
-    orient="v",
-    figure_width=3.2,
-    figure_height=2,
-    figure_dpi=200,
-    defined_color_map=None,
-    annotation_colorscale="viridis",
-    feature_colorscale="seismic",
-    figure_type="interactive",
-    return_metrics=False,
-    **kwargs,
-):
-    """
-    Generate a boxplot for given features from an AnnData object.
-
-    This function visualizes the distribution of gene expression
-    (or other features) across different annotations in the provided data.
-    It can handle various options such as log-transformation, feature
-    selection, and handling of outliers.
-
-    Parameters
-    -----------
-    adata : AnnData
-        An AnnData object containing the data to plot. The expression matrix
-        is accessed via `adata.X` or `adata.layers[layer]`, and annotations
-        are taken from `adata.obs`.
-
-    annotation : str, optional
-        The name of the annotation column (e.g., cell type or sample
-        condition) from `adata.obs` used to group the features. If `None`, no
-        grouping is applied.
-
-    layer : str, optional
-        The name of the layer from `adata.layers` to use. If `None`, `adata.X`
-        is used.
-
-    ax : plotly.graph_objects.Figure, optional
-        The figure to plot the boxplot onto. If `None`, a new figure is
-        created.
-
-    features : list of str, optional
-        The list of features (genes) to plot. If `None`, all features are
-        included.
-
-    showfliers : {None, "downsample", "all"}, default = None
-        If 'all', all outliers are displayed in the boxplot.
-        If 'downsample', when num outliers is >10k, they are downsampled to
-        10% of the original count.
-        If None, outliers are hidden.
-
-    log_scale : bool, default=False
-        If True, the log1p transformation is applied to the features before
-        plotting. This option is disabled if negative values are found in the
-        features.
-
-    orient : {"v", "h"}, default="v"
-        The orientation of the boxplots: "v" for vertical, "h" for horizontal.
-
-    figure_width : int, optional
-        Width of the figure in inches. Default is 3.2.
-
-    figure_height : int, optional
-        Height of the figure in inches. Default is 2.
-
-    figure_dpi : int, optional
-        DPI (dots per inch) for the figure. Default is 200.
-
-    defined_color_map : str, optional
-        Predefined color mapping stored in adata.uns for specific labels.
-        Default is None, which will generate the color mapping automatically.
-
-    annotation_colorscale : str, default='viridis'
-        Name of the color scale to use for the dots when annotation
-        is used.
-
-    feature_colorscale: str, default='seismic'
-        Name of the color scale to use for the dots when feature
-        is used.
-
-    figure_type : {"interactive", "static", "png"}, default = "interactive"
-        If "interactive", the plot is interactive, allowing for zooming 
-        and panning.
-        If "static", the plot is static.
-        If "png", the plot is returned as a PNG image.
-
-    return_metrics: bool, default = False
-        If True, the function also returns the computed boxplot metrics.
-
-    **kwargs : additional keyword arguments
-        Any other keyword arguments passed to the underlying plotting function.
-
-    Returns
-    -------
-    A dictionary containing the following keys:
-        fig : plotly.graph_objects.Figure or str
-            The generated boxplot figure, which can be either:
-                - If `figure_type` is "static": A base64-encoded PNG 
-                image string
-                - If `figure_type` is "interactive": A Plotly figure object
-
-        df : pd.DataFrame
-            A DataFrame containing the features and their corresponding values.
-
-        metrics : pd.DataFrame
-            A DataFrame containing the computed boxplot metrics (if
-            `return_metrics` is True).
-    """
-
-    def boxplot_from_statistics(
-        summary_stats: pd.DataFrame,
-        cmap: dict,
-        annotation: str = None,
-        ax=None,
-        showfliers=None,
-        log_scale=False,
-        orient="v",
-        figure_width=figure_width,
-        figure_height=figure_height,
-        figure_dpi=figure_dpi,
-        **kwargs,
-    ):
-        """
-        Generate a boxplot from the provided summary statistics DataFrame.
-
-        This function visualizes a set of summary statistics (e.g., quartiles,
-        mean) as a boxplot. It supports grouping the data by a given
-        annotation and allows customization of orientation, displaying
-        outliers, and interactive plotting.
-
-        Parameters
-        ----------
-        summary_stats : pd.DataFrame
-            A DataFrame containing the summary statistics of the features to
-            plot. It should include columns like 'marker', 'q1', 'med', 'q3',
-            'whislo', 'whishi', and 'mean'. Optionally, it may also contain an
-            annotation column used for grouping.
-
-        cmap : dict
-            A dictionary mapping annotation/feature values to color strings
-            (hex, rgb/rgba, hsl/hsla, hsv/hsva, or CSS).
-
-        annotation : str, optional
-            The column name in `summary_stats` used to group the data by
-            specific categories (e.g., cell type, condition). If `None`, no
-            grouping is applied.
-
-        ax : matplotlib.axes.Axes or plotly.graph_objects.Figure, optional
-            A figure or axes to plot onto. If None, a new Plotly figure is
-            created.
-
-        showfliers : {None, "downsample", "all"}, default = None
-            If 'all', all outliers are displayed in the boxplot.
-            If 'downsample', when num outliers is >10k, they are downsampled
-            to 10% of the original count.
-            If None, outliers are hidden.
-
-        log_scale : bool, optional, default=False
-            If True, the log1p transformation is applied to the features
-            before plotting. This option is disabled if negative values are
-            found in the features.
-
-        orient : {"v", "h"}, default="v"
-            The orientation of the boxplot: 'v' for vertical and 'h' for
-            horizontal.
-
-        figure_width : int, optional
-            Width of the figure in inches. Default is 3.2.
-
-        figure_height : int, optional
-            Height of the figure in inches. Default is 2.
-
-        figure_dpi : int, optional
-            DPI (dots per inch) for the figure. Default is 200.
-
-        Returns
-        -------
-        fig : plotly.graph_objects.Figure
-            The Plotly figure containing the generated boxplot.
-
-        Notes
-        -----
-        - The function uses the `plotly` library for visualization, allowing
-        interactive plotting.
-        - If grouping by an annotation, each group will be assigned a unique
-        color from a predefined colormap.
-        - The boxplot will display whiskers, quartiles, and the mean. Outliers
-        are controlled by the `showfliers` parameter.
-        """
-
-        # Initialize the figure: if 'ax' is provided, use it, otherwise create
-        # a new Plotly figure
-        if ax:
-            fig = ax
-        else:
-            fig = go.Figure()
-
-        # Get unique features (markers) from the summary statistics
-        unique_features = summary_stats["marker"].unique()
-
-        # Create comma seperated list for features in the plot title
-        # If there are >3 unique features, use 'Multiple Features' in the title
-        if len(unique_features) < 4:
-            plot_title = f"{', '.join(unique_features[0:])}"
-        else:
-            plot_title = 'Multiple Features'
-
-        if annotation:
-            unique_annotations = summary_stats[annotation].unique()
-
-            plot_title += f" grouped by {annotation}"
-
-        # Empty outlier lists cause issues with plotly,
-        # so replace them with [None]
-        if showfliers:
-            summary_stats["fliers"] = summary_stats["fliers"].apply(
-                lambda x: [None] if len(x) == 0 else x
-            )
-
-        # Set up the orientation of the plot data & axis-labels
-        if orient == "h":
-            x_data = "fliers"
-            y_data = "marker"
-            x_axis_label = "log(Intensity)" if log_scale else "Intensity"
-            y_axis_label = annotation if annotation else "feature value"
-        elif orient == "v":
-            x_data = "marker"
-            y_data = "fliers"
-            x_axis_label = annotation if annotation else "feature value"
-            y_axis_label = "log(Intensity)" if log_scale else "Intensity"
-
-        # If annotation is provided, group the data
-        # and create boxplots for each group
-        if annotation:
-            grouped_data = dict()
-            for annotation_value in summary_stats[annotation].unique():
-                # Transform the summary statistics to a dictionary
-                # for each annotation value
-                grouped_data[annotation_value] = summary_stats[
-                    summary_stats[annotation] == annotation_value
-                ].to_dict(orient="list")
-
-            # Add a boxplot trace for each annotation value
-            for annotation_value, data in grouped_data.items():
-                if orient == "h":
-                    y = data[y_data]
-                    x = data[x_data] if showfliers else None
-                else:
-                    y = data[y_data] if showfliers else None
-                    x = data[x_data]
-
-                fig.add_trace(
-                    go.Box(
-                        name=annotation_value,
-                        q1=data["q1"],
-                        median=data["med"],
-                        q3=data["q3"],
-                        lowerfence=data["whislo"],
-                        upperfence=data["whishi"],
-                        mean=data["mean"],
-                        y=y,
-                        x=x,
-                        boxpoints="all",
-                        jitter=0,
-                        pointpos=0,
-                        marker=dict(
-                            color=cmap[annotation_value]
-                        ),  # Assign color based on annotation
-                        legendgroup=annotation_value,
-                        showlegend=annotation_value
-                        in unique_annotations,
-                        **kwargs,
-                    )
-                )
-                # used to only show legend once per annotation group
-                unique_annotations = unique_annotations[
-                    unique_annotations != annotation_value
-                ]
-
-            # Adjust layout to group the boxplots by annotation
-            fig.update_layout(boxmode="group")
-        else:
-            # If no annotation, create a boxplot
-            # for each unique feature (marker)
-            stats_dict = summary_stats.to_dict(orient="list")
-
-            for i, marker_value in enumerate(stats_dict["marker"]):
-                if orient == "h":
-                    y = [stats_dict[y_data][i]]
-                    x = [stats_dict[x_data][i], [None]] if showfliers else None
-                else:
-                    y = [stats_dict[y_data][i], [None]] if showfliers else None
-                    x = [stats_dict[x_data][i]]
-
-                # Note: adding None to the x or y data to ensure
-                # the outliers are displayed correctly
-                fig.add_trace(
-                    go.Box(
-                        name=marker_value,
-                        q1=[stats_dict["q1"][i], None],
-                        median=[stats_dict["med"][i], None],
-                        q3=[stats_dict["q3"][i], None],
-                        lowerfence=[stats_dict["whislo"][i], None],
-                        upperfence=[stats_dict["whishi"][i], None],
-                        mean=[stats_dict["mean"][i], None],
-                        y=y,
-                        x=x,
-                        boxpoints="all",
-                        jitter=0,
-                        pointpos=0,
-                        marker=dict(
-                            color=cmap[marker_value]
-                        ),
-                        showlegend=True,
-                        **kwargs
-                    )
-                )
-
-        # Final layout adjustments for the plot title, axis labels, and size
-        fig.update_layout(
-            title=plot_title,
-            yaxis_title=y_axis_label,
-            xaxis_title=x_axis_label,
-            height=int(figure_height * figure_dpi),
-            width=int(figure_width * figure_dpi),
-        )
-
-        return fig
-
-    #####################
-    #  Main Code Block  #
-    #####################
-
-    logging.info("Calculating Box Plot...")
-    if layer:
-        check_table(adata, tables=layer)
-    if annotation:
-        check_annotation(adata, annotations=annotation)
-    if features:
-        check_feature(adata, features=features)
-
-    if ax and not isinstance(ax, plt.Figure):
-        raise TypeError("Input 'ax' must be a plotly.Figure object.")
-
-    if showfliers not in ("all", "downsample", None):
-        raise ValueError(
-            ("showfliers must be one of 'all', 'downsample', or None."),
-            (f" Got {showfliers}."),
-        )
-
-    if figure_type not in ("interactive", "static", "png"):
-        raise ValueError(
-            (f"figure_type must be one of 'interactive', 'static', or 'png'."),
-            (f" Got {figure_type}."),
-        )
-
-    # Extract data from the specified layer or the default matrix (adata.X)
-    if layer:
-        data_matrix = adata.layers[layer]
-    else:
-        data_matrix = adata.X
-
-    # Convert the data matrix into a DataFrame with
-    # appropriate column names (features)
-    df = pd.DataFrame(data_matrix, columns=adata.var_names)
-
-    # Add annotation column to the DataFrame if provided
-    if annotation:
-        df[annotation] = adata.obs[annotation].values
-
-    # If no specific features are provided, use all available features
-    if features is None:
-        features = adata.var_names.tolist()
-
-    # Filter the DataFrame to include only the
-    # selected features and the annotation
-    df = df[features + ([annotation] if annotation else [])]
-
-    # Check for negative values if log scale is requested
-    if log_scale and (df[features] < 0).any().any():
-        print(
-            "There are negative values in this data, disabling the log scale."
-        )
-        log_scale = False
-
-    # Apply log1p transformation if log_scale is True
-    if log_scale:
-        df[features] = np.log1p(df[features])
-
-    start_time = time.time()
-    # Compute the summary statistics required for the boxplot
-    metrics = compute_boxplot_metrics(
-        df, annotation=annotation, showfliers=showfliers
-    )
-    logging.info(
-        "Time taken to compute boxplot metrics: %f seconds",
-        time.time() - start_time
-    )
-
-    # Get the colormap for the annotation
-    if defined_color_map:
-        cmap = get_defined_color_map(adata)
-    elif annotation:
-        cmap = get_defined_color_map(
-            adata,
-            annotations=annotation,
-            colorscale=annotation_colorscale,
-        )
-    else:
-        # Create a color mapping for the features
-        unique_features = metrics["marker"].unique()
-        cmap = color_mapping(
-            unique_features,
-            color_map=feature_colorscale,
-            return_dict=True,
-        )
-
-    start_time = time.time()
-    # Generate the boxplot figure from the summary statistics
-    fig = boxplot_from_statistics(
-        summary_stats=metrics,
-        cmap=cmap,
-        annotation=annotation,
-        showfliers=showfliers,
-        log_scale=log_scale,
-        orient=orient,
-        ax=ax,
-        figure_width=figure_width,
-        figure_height=figure_height,
-        figure_dpi=figure_dpi,
-        **kwargs,
-    )
-
-    # Prepare the base image or figure return value
-    if figure_type == "interactive":
-        plot = fig
-    elif figure_type == "png":
-        # Convert Plotly to PNG encoded to base64
-        img_bytes = pio.to_image(fig, format="png")
-        plot = base64.b64encode(img_bytes).decode("utf-8")
-    elif figure_type == "static":
-        # Disable interactive components
-        config = {
-            'dragmode': False,
-            'hovermode': False,
-            'clickmode': 'none',
-            'modebar_remove': [
-                'toimage', 
-                'zoom', 
-                'zoomin', 
-                'zoomout',
-                'select', 
-                'pan', 
-                'lasso', 
-                'autoscale', 
-                'resetscale'
-            ],
-            'legend_itemclick': False,
-            'legend_itemdoubleclick': False
-        }
-        plot = fig.update_layout(**config)
-
-    logging.info(
-        "Time taken to generate boxplot: %f seconds",
-        time.time() - start_time
-    )
-
-    result = {"fig": plot, "df": df}
-     # Determine if metrics included based on return_metrics flag
-    if return_metrics:
-       result["metrics"] = metrics
-
-    return result
-
-
-def interactive_spatial_plot(
-    adata,
-    annotations=None,
-    feature=None,
-    layer=None,
+    annotations,
     dot_size=1.5,
-    dot_transparency=0.75,
-    annotation_colorscale='rainbow',
-    feature_colorscale='balance',
+    dot_transparancy=0.75,
+    colorscale='viridis',
     figure_width=6,
     figure_height=4,
     figure_dpi=200,
     font_size=12,
     stratify_by=None,
     defined_color_map=None,
-    reverse_y_axis=False,
-    cmin=None,
-    cmax=None,
     **kwargs
 ):
 
@@ -2047,29 +1317,17 @@ def interactive_spatial_plot(
     adata : AnnData
         Annotated data matrix object,
         must have a .obsm attribute with 'spatial' key.
-    annotations : list of str or str, optional
+    annotations : list of str or str
         Column(s) in `adata.obs` that contain the annotations to plot.
         If a single string is provided, it will be converted to a list.
         The interactive plot will show all the labels in the annotation
         columns passed.
-    feature : str, optional
-        If annotation is None, the name of the gene or feature
-        in `adata.var_names` to use for coloring the scatter plot points
-        based on feature expression.
-    layer : str, optional
-        If feature is not None, the name of the data layer in `adata.layers`
-        to use for visualization. If None, the main data matrix `adata.X` is
-        used.
     dot_size : float, optional
         Size of the scatter dots in the plot. Default is 1.5.
-    dot_transparency : float, optional
+    dot_transparancy : float, optional
         Transparancy level of the scatter dots. Default is 0.75.
-    annotation_colorscale : str, optional
-        Name of the color scale to use for the dots when annotation
-        is used. Default is 'Viridis'.
-    feature_colorscale: srt, optional
-        Name of the color scale to use for the dots when feature
-        is used. Default is 'seismic'.
+    colorscale : str, optional
+        Name of the color scale to use for the dots. Default is 'Viridis'.
     figure_width : int, optional
         Width of the figure in inches. Default is 12.
     figure_height : int, optional
@@ -2083,14 +1341,6 @@ def interactive_spatial_plot(
     defined_color_map : str, optional
         Predefined color mapping stored in adata.uns for specific labels.
         Default is None, which will generate the color mapping automatically.
-    reverse_y_axis : bool, optional
-        If True, reverse the Y-axis of the plot. Default is False.
-    cmin : float, optional
-        Minimum value for the color scale when using features.
-        Default is None.
-    cmax : float, optional
-        Maximum value for the color scale when using features.
-        Default is None.
     **kwargs
         Additional keyword arguments for customization.
 
@@ -2108,32 +1358,13 @@ def interactive_spatial_plot(
     the 'spatial' key.
     """
 
-    if annotations is None and feature is None:
-        raise ValueError(
-            "At least one of the 'annotations' or 'feature' parameters " + \
-            "must be provided."
-        )
+    if not isinstance(annotations, list):
+        annotations = [annotations]
 
-    if annotations is not None:
-        if not isinstance(annotations, list):
-            annotations = [annotations]
-
-        for annotation in annotations:
-            check_annotation(
-                adata,
-                annotations=annotation
-            )
-
-    if feature is not None:
-        check_feature(
+    for annotation in annotations:
+        check_annotation(
             adata,
-            features=feature
-        )
-
-    if layer is not None:
-        check_table(
-            adata,
-            tables=layer
+            annotations=annotation
         )
 
     check_table(
@@ -2142,74 +1373,43 @@ def interactive_spatial_plot(
         associated_table=True
     )
 
-    def prepare_spatial_dataframe(
-            adata,
-            annotations=None,
-            feature=None,
-            layer=None):
-        """
-        Prepare a DataFrame for spatial plotting from an AnnData object.
-
-        If 'annotations' is provided (a string or list of strings), the
-        returned DataFrame will contain the X,Y coordinates and one column
-        per annotation.
-        If 'feature' is provided (and annotations is None), a single 'color'
-        column is created from adata.layers[layer] (if provided) or adata.X.
-
-        Parameters
-        ----------
-        adata : anndata.AnnData
-            AnnData object with spatial coordinates in adata.obsm['spatial'].
-        annotations : str or list of str, optional
-            Annotation column(s) in adata.obs to include.
-        feature : str, optional
-            Continuous feature name in adata.var_names for coloring.
-        layer : str, optional
-            Layer to use for feature values if feature is provided.
-
-        Returns
-        -------
-        df : pandas.DataFrame
-            DataFrame with columns 'X', 'Y' and each annotation column (or a
-            'color' column for continuous feature).
-
-        Raises
-        ------
-        ValueError
-            If neither annotations nor feature is provided.
-        """
-        spatial = adata.obsm['spatial']
-        xcoord = [coord[0] for coord in spatial]
-        ycoord = [coord[1] for coord in spatial]
-        df = pd.DataFrame({'X': xcoord, 'Y': ycoord})
-
-        if annotations is not None:
-            if isinstance(annotations, str):
-                annotations = [annotations]
-            for ann in annotations:
-                df[ann] = adata.obs[ann].values
-        elif feature is not None:
-            data_source = adata.layers[layer] if layer else adata.X
-            color_values = data_source[:, adata.var_names == feature].squeeze()
-            df[feature] = color_values
-        else:
+    if defined_color_map is not None:
+        if not isinstance(defined_color_map, str):
+            raise TypeError(
+                'The "degfined_color_map" should be a string ' + \
+                f'getting {type(defined_color_map)}.'
+            )
+        uns_keys = list(adata.uns.keys())
+        if len(uns_keys) == 0:
             raise ValueError(
-                "Either 'annotations' or 'feature' must be provided.")
-        return df
+                "No existing color map found, please" + \
+                " make sure the Append Pin Color Rules " + \
+                "template had been ran prior to the "+ \
+                "current visualization node.")
+
+        if defined_color_map not in uns_keys:
+            raise ValueError(
+                f'The given color map name: {defined_color_map} ' + \
+                "is not found in current analysis, " + \
+                f'available items are: {uns_keys}'
+            )
+        defined_color_map_dict = adata.uns[defined_color_map]
+        print(
+            f'Selected color mapping "{defined_color_map}":\n' + \
+            f'{defined_color_map_dict}'
+        )
+
 
     def main_figure_generation(
-        spatial_df,
-        annotations=None,
-        feature=None,
+        adata,
+        annotations=annotations,
         dot_size=dot_size,
-        dot_transparency=dot_transparency,
-        colorscale=None,
-        color_mapping=None,
+        dot_transparancy=dot_transparancy,
+        colorscale=colorscale,
         figure_width=figure_width,
         figure_height=figure_height,
         figure_dpi=figure_dpi,
         font_size=font_size,
-        title="interactive_spatial_plot",
         **kwargs
     ):
         """
@@ -2220,22 +1420,20 @@ def interactive_spatial_plot(
 
         Parameters
         ----------
-        spatial_df : pandas.DataFrame
-            Annotated dataframe
-        annotations : Union[list[str], str], optional
-            Column(s) in `spatial_df` that contain the annotations to plot.
+        adata : AnnData
+            Annotated data matrix object,
+            must have a .obsm attribute with 'spatial' key.
+        annotations : list of str or str
+            Column(s) in `adata.obs` that contain the annotations to plot.
+            If a single string is provided, it will be converted to a list.
             The interactive plot will show all the labels in the annotation
-            columns passed as unique traces.
-        feature : str, optional
-            The column name in `spatial_df` for the continuous color mapping
+            columns passed.
         dot_size : float, optional
             Size of the scatter dots in the plot. Default is 1.5.
-        dot_transparency : float, optional
-            Transparency level of the scatter dots. Default is 0.75.
-        colorscale : Optional[str], optional
-            Name of the color scale to use for the dots if features is passed.
-        color_mapping : Optional[dict], optional
-            A dictionary mapping annotation labels to colors for annotations.
+        dot_transparancy : float, optional
+            Transparancy level of the scatter dots. Default is 0.75.
+        colorscale : str, optional
+            Name of the color scale to use for the dots. Default is 'Viridis'.
         figure_width : int, optional
             Width of the figure in inches. Default is 12.
         figure_height : int, optional
@@ -2244,137 +1442,94 @@ def interactive_spatial_plot(
             DPI (dots per inch) for the figure. Default is 200.
         font_size : int, optional
             Font size for text in the plot. Default is 12.
-        title : str, optional
-            Title of the image. Default is "interactive_spatial_plot".
 
         Returns
         -------
         plotly.graph_objs._figure.Figure
-            The generated interactive Plotly figure.
+
         """
 
-        xcoord = spatial_df['X']
-        ycoord = spatial_df['Y']
+        spatial_coords = adata.obsm['spatial']
 
-        min_x, max_x = min(xcoord), max(xcoord)
-        min_y, max_y = min(ycoord), max(ycoord)
-        dx = max_x - min_x
+        extract_columns_raw = []
 
-        dy = max_y - min_y
+        for item in annotations:
+            extract_columns_raw.append(adata.obs[item])
 
-        min_x_range = min_x - 0.05 * dx
-        max_x_range = max_x + 0.05 * dx
-        min_y_range = min_y - 0.05 * dy
-        max_y_range = max_y + 0.05 * dy
+        extract_columns = []
+
+        # The `extract_columns` list is needed for generating Plotly images
+        # because it stores transformed annotation data. These annotations
+        # are added as columns in the DataFrame (`df`) and are used as inputs
+        # for the `color` and `hover_data` parameters in the Plotly scatter
+        # plot. This enables the plot to visually encode annotations, providing
+        # better insights into the spatial data. Without `extract_columns`, the
+        # plot would lack essential annotation-based differentiation and
+        # interactivity.
+
+        for i, item in enumerate(extract_columns_raw):
+            extract_columns.append(
+                [annotations[i] + "_" + str(value) for value in item]
+            )
+
+        xcoord = [coord[0] for coord in spatial_coords]
+        ycoord = [coord[1] for coord in spatial_coords]
+
+        data = {'X': xcoord, 'Y': ycoord}
+
+        # Add the extract_columns data as columns in the dictionary
+        for i, column in enumerate(extract_columns):
+            column_name = annotations[i]
+            data[column_name] = column
+
+        # Create the DataFrame
+        df = pd.DataFrame(data)
+
+        max_x_range = max(xcoord) * 1.1
+        min_x_range = min(xcoord) * 0.9
+        max_y_range = max(ycoord) * 1.1
+        min_y_range = min(ycoord) * 0.9
 
         width_px = int(figure_width * figure_dpi)
         height_px = int(figure_height * figure_dpi)
 
-        # Define partial for scatter traces with common parameters
-        scatter_partial = partial(
-            px.scatter,
+        main_fig = px.scatter(
+            df,
             x='X',
             y='Y',
-            render_mode="webgl",
-            **kwargs
+            color=annotations[0],
+            hover_data=[annotations[0]]
         )
 
-        # Helper function to create a scatter trace for features
-        # as it needs a continuous color scale.
-        # in my experience, px.scatter does not work well with
-        # continuous color scales color_continuous_scale,
-        # so I use go.Scattergl instead.
-        def create_scatter_trace(df, feature, colorscale):
-            print(colorscale)
-            return go.Scattergl(
-                x=df['X'],
-                y=df['Y'],
-                mode="markers",
-                marker=dict(
-                    color=df[feature],
-                    colorscale=colorscale,
-                    colorbar=dict(title=feature),
-                    showscale=True,
-                    cmin=cmin,
-                    cmax=cmax
-                ),
-                hoverinfo="x+y+text",
-                text=df[feature],
-                **kwargs
-            )
+        # If annotation is more than 1, we would first call px.scatter
+        # to create plotly object, than append the data to main figure
+        # with add_trace for a centralized view.
+        if len(annotations) > 1:
+            for obs in annotations[1:]:
+                scatter_fig = px.scatter(
+                                    df,
+                                    x='X',
+                                    y='Y',
+                                    color=obs,
+                                    hover_data=[obs]
+                                )
 
-        # The annotation trace creates a dummy point
-        # so that the label of that annotion is shown in the legend
-        def create_annotation_trace(filtered, obs):
+                main_fig.add_traces(scatter_fig.data)
 
-            # add one extra point just close to the first point
-            trace = px.scatter(
-                x=[filtered['X'].iloc[0]-0.1],
-                y=[filtered['Y'].iloc[0]-0.1],
-                render_mode="webgl"
-            )
-            trace.update_traces(
-                mode='markers',
-                showlegend=True,
-                marker=dict(
-                    color="white",
-                    colorscale=None,
-                    size=0,
-                    opacity=0
-                ),
-                name=f'<b>{obs}</b>'
-            )
-            return trace
-
-        main_fig = go.Figure()
-
-        if annotations is not None:
-            # Loop over all annotation and add annotation dummy point
-            # and data points to the figure
-            for obs in annotations:
-
-                spatial_df[obs].fillna("no_label", inplace=True)
-                filtered = spatial_df
-                # Create and add annotation trace using the helper function
-                main_fig.add_traces(
-                    create_annotation_trace(filtered, obs).data)
-                # Create and add the scatter trace for the annotation
-                main_fig.add_traces(
-                    scatter_partial(
-                        filtered,
-                        color=obs,
-                        hover_data=[obs],
-                        color_discrete_map=color_mapping,
-                    ).data)
-
-        elif feature is not None:
-
-            main_fig.add_trace(
-                create_scatter_trace(spatial_df, feature, colorscale)
-            )
-
-        else:
-            raise ValueError(
-                "No plot is generated."
-                " Either 'annotations' or 'feature' must be provided."
-            )
-
-        if annotations is not None:
-            # Set the hover template to show x, y and annotation
-            # This is needed to show the correct label when
-            # multiple annotations are present
-            hovertemplate = "%{customdata[0]}<extra></extra>"
-        elif feature is not None:
-            # it is already set in the create_scatter_trace function
-            hovertemplate = None
+        # Reset the color attribute of the traces in combined_fig
+        # This is necessary to ensure that the color attribute
+        # does not interfere with subsequent plots
+        for trace in main_fig.data:
+            trace.marker.color = None
 
         main_fig.update_traces(
             mode='markers',
             marker=dict(
                 size=dot_size,
-                opacity=dot_transparency
+                colorscale=colorscale,
+                opacity=dot_transparancy
             ),
-            hovertemplate=hovertemplate
+            hovertemplate="%{customdata[0]}<extra></extra>"
         )
 
         main_fig.update_layout(
@@ -2382,12 +1537,13 @@ def interactive_spatial_plot(
             height=height_px,
             plot_bgcolor='white',
             font=dict(size=font_size),
+            margin=dict(l=10, r=10, t=10, b=10),
             legend=dict(
                 orientation='v',
                 yanchor='middle',
                 y=0.5,
-                xanchor='left',
-                x=1.05,
+                xanchor='right',
+                x=1.15,
                 title='',
                 itemwidth=30,
                 bgcolor="rgba(0, 0, 0, 0)",
@@ -2397,16 +1553,16 @@ def interactive_spatial_plot(
             xaxis=dict(
                         range=[min_x_range, max_x_range],
                         showgrid=False,
-                        # showticklabels=False,
+                        showticklabels=False,
                         title_standoff=5,
                         constrain="domain"
                     ),
             yaxis=dict(
-                        range=[min_y_range, max_y_range],
+                        range=[max_y_range, min_y_range],
                         showgrid=False,
                         scaleanchor="x",
                         scaleratio=1,
-                        # showticklabels=False,
+                        showticklabels=False,
                         title_standoff=5,
                         constrain="domain"
                     ),
@@ -2422,7 +1578,129 @@ def interactive_spatial_plot(
                     line=dict(color="black", width=1),
                     fillcolor="rgba(0,0,0,0)",
                 )
-            ],
+            ]
+        )
+
+        return main_fig
+
+    def generate_and_update_image(
+        adata,
+        title,
+        color_mapping=None,
+        **kwargs
+    ):
+        """
+        This function generates the main figure with annotations and
+        optional stratifications or color mappings, providing flexibility
+        for detailed visualizations. It processes data, groups it by
+        annotations, and enables advanced legend handling and styling.
+
+        Parameters
+        ----------
+        adata : AnnData
+            Annotated data matrix containing either the full dataset
+            or a subset of the data.
+        title : str
+            Title for the plot.
+        stratify_by : str, optional
+            Column to stratify the plot. Default is None.
+        color_mapping : dict, optional
+            Color mapping for specific labels. Default is None.
+
+        Returns
+        -------
+        dict
+            A dictionary with "image_name" and "image_object" keys.
+        """
+        main_fig_parent = main_figure_generation(
+            adata,
+            annotations=annotations,
+            dot_size=dot_size,
+            dot_transparancy=dot_transparancy,
+            colorscale=colorscale,
+            figure_width=figure_width,
+            figure_height=figure_height,
+            figure_dpi=figure_dpi,
+            font_size=font_size,
+            **kwargs
+        )
+
+        # Create a copy of the figure for non-destructive updates
+        main_fig_copy = copy.copy(main_fig_parent)
+        data = main_fig_copy.data
+        main_fig_parent.data = []
+
+        # Prepare to track updates and manage grouped annotations
+        updated_index = []
+        legend_list = [
+            f"legend{i+1}" if i > 0 else "legend"
+            for i in range(len(annotations))
+        ]
+        previous_group = None
+
+        # Process each trace in the figure for grouping and legends
+        indices = list(range(len(data)))
+        for item in indices:
+            cat_label = data[item]['customdata'][0][0]
+            cat_dataset = pd.DataFrame(
+                {'X': data[item]['x'], 'Y': data[item]['y']}
+            )
+
+            # Assign the label to the appropriate legend group
+            for i, legend_group in enumerate(annotations):
+                if cat_label.startswith(legend_group):
+                    cat_leg_group = f"<b>{legend_group}</b>"
+                    cat_label = cat_label[len(legend_group) + 1:]
+                    cat_group = legend_list[i]
+
+            # Add a new legend entry if this group hasn't been encountered
+            if previous_group is None or cat_group != previous_group:
+                main_fig_parent.add_trace(go.Scattergl(
+                    x=[data[item]['x'][0]],
+                    y=[data[item]['y'][0]],
+                    name=cat_leg_group,
+                    mode="markers",
+                    showlegend=True,
+                    marker=dict(
+                        color="white",
+                        colorscale=None,
+                        size=0,
+                        opacity=0
+                    )
+                ))
+                previous_group = cat_group
+
+            # Add the category label to the dataset for grouping
+            cat_dataset['label'] = cat_label
+
+            main_fig_parent.add_trace(go.Scattergl(
+                x=cat_dataset['X'],
+                y=cat_dataset['Y'],
+                name=cat_label,
+                mode="markers",
+                showlegend=True,
+                marker=dict(
+                    colorscale=colorscale,
+                    size=dot_size,
+                    opacity=dot_transparancy
+                )
+            ))
+
+            updated_index.append(cat_label)
+
+        if color_mapping is not None:
+            main_fig_copy = copy.copy(main_fig_parent)
+            data = main_fig_copy.data
+            main_fig_parent.data = []
+
+            for trace in data:
+                trace_name = trace["name"]
+                if color_mapping is not None:
+                    if trace_name in color_mapping.keys():
+                        trace['marker']['color'] = color_mapping[trace_name]
+                main_fig_parent.add_trace(trace)
+
+        main_fig_parent.update_layout(
             title={
                 'text': title,
                 'font': {'size': font_size},
@@ -2431,104 +1709,69 @@ def interactive_spatial_plot(
                 'x': 0.5,
                 'y': 0.99
             },
+            legend={
+                'x': 1.05,
+                'y': 0.5,
+                'xanchor': 'left',
+                'yanchor': 'middle'
+            },
             margin=dict(l=5, r=5, t=font_size*2, b=5)
         )
 
-        if reverse_y_axis:
-            main_fig.update_layout(yaxis=dict(autorange="reversed"))
-
         return {
             "image_name": f"{spell_out_special_characters(title)}.html",
-            "image_object": main_fig
+            "image_object": main_fig_parent
         }
 
+
     #####################
-    # Main Code Block ##
+    ## Main Code Block ##
     #####################
-
-    from functools import partial
-
-    # Set the discrete or continuous color parameters
-    color_dict = None
-    colorscale = None
-    title_substring = ""
-    if annotations is not None:
-        color_dict = get_defined_color_map(
-            adata,
-            defined_color_map=defined_color_map,
-            annotations=annotations,
-            colorscale=annotation_colorscale
-        )
-        title_substring = f"Highlighted by {', '.join(annotations)}"
-    elif feature is not None:
-        colorscale = feature_colorscale
-        title_substring = (
-            f'Colored by "{feature}", '
-            f'table: "{layer if layer else "Original"}"'
-        )
-
-    # Create the partial function with the common keyword arguments directly
-    plot_main = partial(
-        main_figure_generation,
-        feature=feature,
-        annotations=annotations,
-        color_mapping=color_dict,
-        colorscale=colorscale,
-        dot_size=dot_size,
-        dot_transparency=dot_transparency,
-        figure_width=figure_width,
-        figure_height=figure_height,
-        figure_dpi=figure_dpi,
-        font_size=font_size,
-        **kwargs
-    )
 
     results = []
+    if defined_color_map:
+        color_dict = adata.uns[defined_color_map]
+    else:
+        unique_ann_labels = np.unique(adata.obs[annotations].values)
+        color_dict = color_mapping(
+            unique_ann_labels,
+            color_map=colorscale,
+            rgba_mode=False,
+            return_dict=True
+        )
 
     if stratify_by is not None:
-        # Check if the stratification column exists in the data
-        check_annotation(adata, annotations=stratify_by)
         unique_stratification_values = adata.obs[stratify_by].unique()
 
         for strat_value in unique_stratification_values:
             condition = adata.obs[stratify_by] == strat_value
-            title_str = f"Subsetting {stratify_by}: {strat_value}"
-
+            title = f"Highlighting {stratify_by}: {strat_value}"
             indices = np.where(condition)[0]
-            print(f"number of cells in the region: {len(adata.obsm['spatial'][indices])}")
+            selected_spatial = adata.obsm['spatial'][indices]
+            print(f"number of cells in the region: {len(selected_spatial)}")
+
             adata_subset = select_values(
                 data=adata,
                 annotation=stratify_by,
                 values=strat_value
             )
 
-            spatial_df = prepare_spatial_dataframe(
-                adata_subset,
-                annotations=annotations,
-                feature=feature,
-                layer=layer
-            )
-            title_str += f"\n{title_substring}"
-            # Call the partial function with additional arguments
-            result = plot_main(
-                spatial_df,
-                title=title_str
+            result = generate_and_update_image(
+                adata=adata_subset,
+                title=title,
+                stratify_by=stratify_by,
+                color_mapping=color_dict,
+                **kwargs
             )
             results.append(result)
     else:
-        title_str = "Interactive Spatial Plot"
-        title_str += f"\n{title_substring}"
-        spatial_df = prepare_spatial_dataframe(
-            adata,
-            annotations=annotations,
-            feature=feature,
-            layer=layer
-        )
-
-        # For non-stratified case, pass extra parameters if needed
-        result = plot_main(
-            spatial_df,
-            title=title_str
+        title = "Interactive Spatial Plot"
+        result = generate_and_update_image(
+            adata=adata,
+            title=title,
+            stratify_by=None,
+            color_mapping=color_dict,
+            **kwargs
         )
         results.append(result)
 
@@ -2776,7 +2019,7 @@ def relational_heatmap(
     fig.update_layout(
         overwrite=True,
         xaxis=dict(
-            title=target_annotation,
+            title=source_annotation,
             ticks="",
             dtick=1,
             side="top",
@@ -2785,7 +2028,7 @@ def relational_heatmap(
             ticktext=x
         ),
         yaxis=dict(
-            title=source_annotation,
+            title=target_annotation,
             ticks="",
             dtick=1,
             ticksuffix="   ",
@@ -2828,6 +2071,7 @@ def relational_heatmap(
 def plot_ripley_l(
         adata,
         phenotypes,
+        annotation=None,
         regions=None,
         sims=False,
         return_df=False,
@@ -2945,34 +2189,17 @@ def plot_ripley_l(
             ax=ax,
             **kwargs)
 
-        # Calculate averages for simulations if enabled
-        if sims:
-            sims_stat_df = row["ripley_l"]["sims_stat"]
-            avg_stats = sims_stat_df.groupby("bins")["stats"].mean()
-            avg_used_center_cells = \
-                sims_stat_df.groupby("bins")["used_center_cells"].mean()
-
         # Prepare plotted data to return if return_df is True
         l_stat_data = row['ripley_l']['L_stat']
         for _, stat_row in l_stat_data.iterrows():
-
-            entry = {
+            plot_data.append({
                 'region': region,
                 'radius': stat_row['bins'],
                 'ripley(radius)': stat_row['stats'],
                 'region_area': area,
                 'n_center': n_center,
                 'n_neighbor': n_neighbors,
-                'used_center_cells': stat_row['used_center_cells']
-            }
-
-            if sims:
-                entry['avg_sim_ripley(radius)'] = \
-                    avg_stats.get(stat_row['bins'], None)
-                entry['avg_sim_used_center_cells'] = \
-                    avg_used_center_cells.get(stat_row['bins'], None)
-
-            plot_data.append(entry)
+            })
 
         if sims:
             confidence_level = 95
@@ -3464,144 +2691,3 @@ def visualize_nearest_neighbor(
     )
 
     return result_dict
-
-import json
-import plotly.graph_objects as go
-
-
-def present_summary_as_html(summary_dict: dict) -> str:
-    """
-    Build an HTML string that presents the summary information
-    intuitively.
-
-    For each specified column, the HTML includes:
-      - Column name and data type
-      - Count and list of missing indices
-      - Summary details presented in a table (for numeric: stats; 
-        categorical: unique values and counts)
-
-    Parameters
-    ----------
-    summary_dict : dict
-        The summary dictionary returned by summarize_dataframe.
-
-    Returns
-    -------
-    str
-        HTML string representing the summary.
-    """
-    html = (
-        "<html><head><title>Data Summary</title>"
-        "<style>"
-        "body { font-family: Arial, sans-serif; margin: 20px; }"
-        "table { border-collapse: collapse; width: 100%; "
-        "margin-bottom: 20px; }"
-        "th, td { border: 1px solid #dddddd; text-align: left; "
-        "padding: 8px; }"
-        "th { background-color: #f2f2f2; }"
-        ".section { margin-bottom: 40px; }"
-        "</style></head><body>"
-        "<h1>Data Summary</h1>"
-    )
-
-    for col, info in summary_dict.items():
-        html += (
-            f"<div class='section'><h2>Column: {col}</h2>"
-            f"<p><strong>Data Type:</strong> {info['data_type']}</p>"
-            f"<p><strong>Missing Indices:</strong> "
-            f"{info['missing_indices']} (Count: "
-            f"{info['count_missing_indices']})</p>"
-            "<h3>Summary Details:</h3>"
-            "<table><thead><tr><th>Metric</th><th>Value</th></tr></thead>"
-            "<tbody>"
-        )
-        for key, val in info['summary'].items():
-            html += f"<tr><td>{key}</td><td>{val}</td></tr>"
-        html += "</tbody></table></div>"
-
-    html += "</body></html>"
-    return html
-
-
-def present_summary_as_figure(summary_dict: dict) -> go.Figure:
-    """
-    Build a static Plotly figure (using a table) to depict the
-    summary dictionary.
-
-    The figure includes columns:
-      - Column name
-      - Data type
-      - Count of missing values
-      - Missing indices (as a string)
-      - Summary details (formatted as JSON for readability)
-
-    Parameters
-    ----------
-    summary_dict : dict
-        The summary dictionary returned from summarize_dataframe.
-
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        A static Plotly table figure representing the summary.
-    """
-    col_names = []
-    data_types = []
-    missing_counts = []
-    missing_indices = []
-    summaries = []
-
-    for col, info in summary_dict.items():
-        col_names.append(col)
-        data_types.append(info['data_type'])
-        missing_counts.append(info['count_missing_indices'])
-        missing_indices.append(str(info['missing_indices']))
-
-        # need to convert nmpy int64 and float64 to native int and float
-        # so that I can dump them as json
-        clean_data = {}
-        for k, v in info['summary'].items():
-            # Check if the value is a NumPy integer
-            if isinstance(v, np.integer):  
-                clean_data[k] = int(v)  
-            # Check if the value is a NumPy float
-            elif isinstance(v, np.floating): 
-                clean_data[k] = float(v)  
-            else:
-                # Keep the value as is if it's already a standard type
-                clean_data[k] = v
-
-        summaries.append(json.dumps(clean_data, indent=2))
-
-    fig = go.Figure(
-        data=[go.Table(
-            header=dict(
-                values=[
-                    "Column",
-                    "Data Type",
-                    "Missing Count",
-                    "Missing Indices",
-                    "Summary"
-                ],
-                fill_color='paleturquoise',
-                align='left'
-            ),
-            cells=dict(
-                values=[
-                    col_names,
-                    data_types,
-                    missing_counts,
-                    missing_indices,
-                    summaries
-                ],
-                fill_color='lavender',
-                align='left'
-            )
-        )]
-    )
-    fig.update_layout(
-        width=1500,
-        height=300 + 50 * len(col_names),
-        title="Data Summary"
-    )
-    return fig
