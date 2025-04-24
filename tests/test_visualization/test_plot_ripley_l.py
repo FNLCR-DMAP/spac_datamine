@@ -107,6 +107,7 @@ class TestPlotRipleyL(unittest.TestCase):
         # save the plot
         # fig.savefig("simulations.png")
 
+
     def test_regions(self):
         """
         Test plotting multiple regions
@@ -170,6 +171,74 @@ class TestPlotRipleyL(unittest.TestCase):
         legend_texts = [text.get_text() for text in legends]
         self.assertTrue(any("day1" in legend for legend in legend_texts))
 
+    def test_return_df_multiple_regions(self):
+        """
+        Test return_df with multiple regions
+        """
+
+        phenotype_name = ["A"]
+        n_cells = 200
+        phenotypes = phenotype_name * n_cells * 2
+        features = np.random.rand(n_cells * 2)
+        # Generate spatial_x at random float position in the square
+        x_max = 200
+        y_max = 200
+        # Cells for region 'region1' are randomly scattered
+        region1_spatial_x = np.random.rand(n_cells) * x_max
+        region1_spatial_y = np.random.rand(n_cells) * y_max
+
+        # Cells for region 'region2' are clustered
+        region2_spatial_x = np.random.rand(n_cells) * x_max / 8
+        region2_spatial_y = np.random.rand(n_cells) * y_max / 8
+
+        # concatenate the spatial coordinates
+        spatial_x = np.concatenate((region1_spatial_x, region2_spatial_x))
+        spatial_y = np.concatenate((region1_spatial_y, region2_spatial_y))
+
+        region = ['day1'] * n_cells + ['day2'] * n_cells
+
+        # Keep radius relatively small to avoid boundary adjustment
+        radii = [0, 1, 2]
+
+        # Create a dataframe out of phenotypes, features, spatial coordinates
+        dictionary = {'phenotype': phenotypes, 'feature': features,
+                      'spatial_x': spatial_x, 'spatial_y': spatial_y,
+                      'day': region}
+        dataframe = pd.DataFrame(dictionary)
+
+        self.adata = self.create_dummy_dataset(dataframe)
+        self.adata.obs["day"] = pd.Categorical(dataframe["day"])
+        ripley_l(
+            self.adata,
+            annotation="phenotype",
+            phenotypes=["A", "A"],
+            distances=radii,
+            n_simulations=100,
+            regions="day"
+        )
+
+        # Test simulaitons is off
+        _, return_df = plot_ripley_l(
+            self.adata,
+            phenotypes=("A", "A"),
+            sims=True,
+            return_df=True
+        )
+
+        # Check that the returned dataframe has the
+        # correct number of rows (three radii times two regions)
+        self.assertEqual(return_df.shape[0], 6)
+
+        expected_columns = [
+            'ripley(radius)',
+            'used_center_cells',
+            'avg_sim_ripley(radius)',
+            'avg_sim_used_center_cells'
+        ]
+
+        for column in expected_columns:
+            self.assertIn(column, return_df.columns)
+
     def test_two_phenotypes(self):
         """
         Test plotting one region with two phenotypes
@@ -226,7 +295,7 @@ class TestPlotRipleyL(unittest.TestCase):
         """
         adata = self.create_dummy_dataset()
         distances = [5]
-        phenotypes = ['A', 'B']
+        phenotypes = ['A', 'A']
 
         ripley_l(
             adata=adata,
@@ -238,27 +307,28 @@ class TestPlotRipleyL(unittest.TestCase):
         expected_error_message = (
             'No Ripley L results found for the specified pair of phenotypes.\n'
             'Center Phenotype: "A"\n'
-            'Neighbor Phenotype: "A"\n'
+            'Neighbor Phenotype: "B"\n'
             'Exisiting unique pairs:   center_phenotype neighbor_phenotype\n'
-            '0                A                  B'
+            '0                A                  A'
         )
 
         # Check that calling plot_ripley_l raises the expected error with the exact message
         with self.assertRaisesRegex(ValueError, expected_error_message):
             plot_ripley_l(
                 adata,
-                phenotypes=("A", "A"),
-                regions="region",
+                phenotypes=("A", "B"),
+                regions=["region"],
                 sims=True
             )
 
-    def test_warning_no_region_phenotypes(self):
+
+    def test_no_phenotypes_within_region(self):
         """
         Test Ripley does not has passed phenotypes
         """
         adata = self.create_dummy_dataset()
         distances = [5]
-        phenotypes = ['A', 'C']
+        phenotypes = ['A', 'A']
 
         ripley_l(
             adata=adata,
@@ -267,22 +337,24 @@ class TestPlotRipleyL(unittest.TestCase):
             distances=distances,
         )
 
-        expected_warning_message = (
-            'WARNING, phenotype "C" not found in region "all",'
-            ' skipping Ripley L.'
+        expected_error_message = (
+            "No data available for the specified regions: "
+            "['non_exisiting_region']. "
+            "Available regions: ['all']."
         )
 
-        with self.assertLogs(level='WARNING') as log:
-            # Call the function that triggers the warning
+        # Refactor the code below to NOT use RaisesRegex, instead
+        # Capture the exception and check the message
+
+        with self.assertRaises(ValueError) as context:
             plot_ripley_l(
                 adata,
-                phenotypes=("A", "C"),
+                phenotypes=("A", "A"),
+                regions=["non_exisiting_region"],
                 sims=True
             )
 
-        # Check that the expected warning message is in the logs
-        self.assertTrue(
-            any(expected_warning_message in text for text in log.output))
+        self.assertIn(expected_error_message, str(context.exception))
 
     def test_no_ripley_l(self):
         """

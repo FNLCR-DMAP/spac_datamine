@@ -8,16 +8,21 @@ import scanpy.external as sce
 from spac.utils import check_table, check_annotation, check_feature
 from scipy import stats
 import umap as umap_lib
-from sklearn.neighbors import KNeighborsClassifier
 from scipy.sparse import issparse
 from typing import List, Union, Optional
 from sklearn.cluster import KMeans
 from numpy.lib import NumpyVersion
+<<<<<<< mutual_information_metric
 import plotly.express as px
 from sklearn.metrics.cluster import adjusted_rand_score
 from sklearn.metrics.cluster import normalized_mutual_info_score
 
 
+=======
+import multiprocessing
+import parmap
+from spac.utag_functions import utag
+>>>>>>> dev
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -181,99 +186,6 @@ def kmeans(
 
     adata.obs[output_annotation] = pd.Categorical(kmeans_out)
     adata.uns["kmeans_features"] = features
-
-
-def knn_clustering(
-        adata,
-        features,
-        annotation,
-        layer=None,
-        k=50,
-        output_annotation="knn",
-        associated_table=None,
-        **kwargs):
-    """
-    Calculate knn clusters using sklearn KNeighborsClassifier
-
-    The function will add these two attributes to `adata`:
-    `.obs["knn"]`
-        The assigned int64 class labels by KNeighborsClassifier
-
-    `.uns["knn_features"]`
-        The features used to calculate the knn clusters
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-       The AnnData object.
-
-    features : list of str
-        The variables that would be included in creating the phenograph
-        clusters.
-    
-    annotation : str
-        The name of the annotation used for classifying the data
-
-    layer : str, optional
-        The layer to be used in calculating the phengraph clusters.
-
-    k : int, optional
-        The number of nearest neighbor to be used in creating the graph.
-
-    output_annotation : str, optional
-        The name of the output layer where the clusters are stored.
-
-    associated_table : str, optional
-        If set, use the corresponding key `adata.obsm` to calcuate the
-        clustering. Takes priority over the layer argument.
-
-    Returns
-    -------
-    adata : anndata.AnnData
-        Updated AnnData object with the knn clusters
-        stored in `adata.obs[output_annotation]`
-    """
-
-    # 1 read in data, validate labels in the call here
-    _validate_transformation_inputs(
-        adata=adata,
-        layer=layer,
-        associated_table=associated_table,
-        features=features,
-        annotation=annotation,
-    )
-
-    if not isinstance(k, int) or k <= 0:
-        raise ValueError("`k` must be a positive integer")
-    
-    data = _select_input_features(
-        adata=adata,
-        layer=layer,
-        associated_table=associated_table,
-        features=features
-    )
-
-    # 2 we must split the labeled data from the unlabeled data
-    annotation_data = adata.obs[annotation]
-    annotation_mask = annotation_data != "no_label"
-
-    # check if there is a mix of labeled/unlabeled cells
-    if all(annotation_mask):
-        raise ValueError("All cells are labeled. Please provide a mix of labeled and unlabeled data.")
-    elif not any(annotation_mask):
-        raise ValueError("No cells are labeled. Please provide a mix of labeled and unlabeled data.")
-         
-    data_labeled = data[annotation_mask]
-    annotation_labeled = np.array(annotation_data[annotation_mask], dtype=int)
-    
-    # 3 then we make the function call to sklearn  
-    classifier = KNeighborsClassifier(n_neighbors = k, **kwargs)
-    classifier.fit(data_labeled, annotation_labeled)
-    knn_predict = classifier.predict(data)
-
-    # 4 this output stores the knn labels we just generated
-    adata.obs[output_annotation] =  pd.Categorical(knn_predict)
-    adata.uns["knn_features"] = features
 
 
 def get_cluster_info(adata, annotation, features=None, layer=None):
@@ -488,8 +400,7 @@ def _validate_transformation_inputs(
         adata: anndata,
         layer: Optional[str] = None,
         associated_table: Optional[str] = None,
-        features: Optional[Union[List[str], str]] = None,
-        annotation: Optional[str] = None,
+        features: Optional[Union[List[str], str]] = None
         ) -> None:
     """
     Validate inputs for transformation functions.
@@ -504,8 +415,6 @@ def _validate_transformation_inputs(
         Name of the key in `obsm` that contains the numpy array.
     features : list of str or str, optional
         Names of features to use for transformation.
-    annotation: str, optional
-        Name of annotation column in `obs` that contains class labels
 
     Raises
     ------
@@ -529,9 +438,6 @@ def _validate_transformation_inputs(
 
     if features is not None:
         check_feature(adata, features=features)
-    
-    if annotation is not None:
-        check_annotation(adata, annotations=annotation)
 
 
 def _select_input_features(adata: anndata,
@@ -1240,6 +1146,7 @@ def apply_per_batch(data, annotation, method, **kwargs):
 
     return transformed_data
 
+<<<<<<< mutual_information_metric
 
 def compare_annotations(adata, annotation_list, metric="adjusted_rand_score"):
     """
@@ -1254,11 +1161,34 @@ def compare_annotations(adata, annotation_list, metric="adjusted_rand_score"):
 
     `.uns["compare_annotations_list"]`
         The annotations used to calculate and create the matrix that stores
+=======
+# utag clustering
+def run_utag_clustering(
+        adata,
+        features=None,
+        k=15,
+        resolution=1,
+        max_dist=20,
+        n_pcs=10,
+        random_state=42,
+        n_jobs=1,
+        n_iterations=5,
+        slide_key="Slide",
+        layer=None,
+        output_annotation="UTAG",
+        associated_table=None,
+        parallel=False,
+        **kwargs
+):
+    """
+    Run UTAG clustering on the AnnData object.
+>>>>>>> dev
 
     Parameters
     ----------
     adata : anndata.AnnData
         The AnnData object.
+<<<<<<< mutual_information_metric
     annotation_list : list of str
         List of names of (existing) annotations
     metric : str
@@ -1323,3 +1253,82 @@ def compare_annotations(adata, annotation_list, metric="adjusted_rand_score"):
 
 
 
+=======
+    features : list
+        List of features to use for clustering or for PCA. Default 
+        (None) is to use all.
+    k : int
+        The number of nearest neighbor to be used in creating the graph.
+        Default is 15.
+    resolution : float
+        Resolution parameter for the clustering, higher resolution produces 
+        more clusters. Default is 1.
+    max_dist : float
+        Maximum distance to cut edges within a graph. Default is 20.
+    n_principal_components : int
+        Number of principal components to use for clustering.
+    random_state : int
+        Random state for reproducibility.
+    n_jobs : int
+        Number of jobs to run in parallel. Default is 5.
+    n_iterations : int
+        Number of iterations for the clustering.
+    slide_key: str
+        Key of adata.obs containing information on the batch structure 
+        of the data.In general, for image data this will often be a variable 
+        indicating the imageb so image-specific effects are removed from data.
+        Default is "Slide".
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Updated AnnData object with clustering results.
+    """
+    resolutions = [resolution]
+    
+    _validate_transformation_inputs(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features
+    )
+    
+    # add print the current k value
+    if not isinstance(k, int) or k <= 0:
+        raise ValueError(f"`k` must be a positive integer, but received {k}.")
+
+    if random_state is not None:
+        np.random.seed(random_state)
+
+    if features is not None:
+        data = _select_input_features(
+        adata=adata,
+        layer=layer,
+        associated_table=associated_table,
+        features=features,)
+        adata_utag = adata[:, features].copy()
+        adata_utag.X = data
+    else:
+        adata_utag = adata.copy()
+    
+    utag_results = utag(
+        adata_utag,
+        slide_key=slide_key,
+        max_dist=max_dist,
+        normalization_mode='l1_norm',
+        apply_clustering=True,
+        clustering_method="leiden",
+        resolutions=resolutions,
+        leiden_kwargs={"n_iterations": n_iterations, 
+                       "random_state": random_state},
+        n_pcs=n_pcs,
+        parallel=parallel,
+        processes=n_jobs,
+        k=k,
+    )
+    # change camel case to snake 
+    curClusterCol = 'UTAG Label_leiden_' + str(resolution)
+    cluster_list = utag_results.obs[curClusterCol].copy()
+    adata.obs[output_annotation] = cluster_list.copy()
+    adata.uns["utag_features"] = features
+>>>>>>> dev

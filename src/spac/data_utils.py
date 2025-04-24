@@ -12,7 +12,6 @@ from spac.utils import regex_search_list, check_list_in_list, check_annotation
 from anndata import AnnData
 
 
-
 def append_annotation(
     data: pd.DataFrame,
     annotation: dict
@@ -388,97 +387,7 @@ def load_csv_files(file_names):
     return combined_dataframe
 
 
-def combine_dfs_depracated(dataframes, annotations):
-
-    """
-    Combine a list of pandas dataframe into single pandas dataframe.
-
-    Parameters
-    ----------
-    dataframes : list of tuple
-        A list containing (file name, pandas dataframe) to be combined
-        into single dataframe output
-
-    annotations : pandas.DataFrame
-        A pandas data frame where the index is the file name, and
-        the columns are various annotations to
-        add to all cells in a given dataframe.
-
-    Returns
-    -------
-    pandas.DataFrame
-        A pandas data frame of all the cells
-        where each cell has a unique index.
-    """
-
-    meta_schema = []
-    combined_dataframe = pd.DataFrame()
-    if not str(type(annotations)) == "<class 'pandas.core.frame.DataFrame'>":
-        annotations_type = str(type(annotations))
-        error_message = "annotations should be a pandas dataframe, " + \
-            "but got " + annotations_type + "."
-        raise TypeError(error_message)
-
-    for current_df_list in dataframes:
-
-        file_name = current_df_list[0]
-        current_df = current_df_list[1]
-
-        # Check is schema of each data_frame matches.
-        # Check for length first, then check if columns match
-        # The overall schema is based on the first file read.
-        current_schema = current_df.columns.to_list()
-
-        if len(meta_schema) == 0:
-            meta_schema = current_schema
-            print("Meta schema acquired. Columns are:")
-            for column_name in meta_schema:
-                print(column_name)
-
-        if len(meta_schema) == len(current_schema):
-            if set(meta_schema) != set(current_schema):
-                error_message = "Column in current file does not match " + \
-                        "the meta_schema, got:\n {current_schema}. "
-                raise ValueError(error_message)
-        else:
-            error_message = "Column in current file does not match " + \
-                        "the meta_schema, got:\n {current_schema}. "
-            raise ValueError(error_message)
-
-        # Check if the annotations DataFrame has the required index
-        if file_name not in annotations.index:
-            error_message = "Missing data in the annotations DataFrame" + \
-                f"for the file '{file_name}'."
-            raise ValueError(error_message)
-
-        # Add annotations in to the dataframe
-        file_annotations = annotations.loc[file_name]
-
-        for file_annotation_name, file_annotation_value in \
-                file_annotations.iteritems():
-            current_df[file_annotation_name] = file_annotation_value
-
-        if combined_dataframe.empty:
-            combined_dataframe = current_df.copy()
-        else:
-            # Concatenate the DataFrames, with error handling
-            try:
-                combined_dataframe = pd.concat(
-                    [combined_dataframe, current_df]
-                    )
-            except (ValueError, TypeError) as e:
-                print('Error concatenating DataFrames:', e)
-
-    # Reset index of the combined_dataframe
-    combined_dataframe.reset_index(drop=True, inplace=True)
-
-    print("CSVs are combined into single dataframe!")
-    print(combined_dataframe.info())
-
-    return combined_dataframe
-
-
-def select_values(data, annotation, values=None):
+def select_values(data, annotation, values=None, exclude_values=None):
     """
     Selects values from either a pandas DataFrame or an AnnData object based
     on the annotation and values.
@@ -494,6 +403,9 @@ def select_values(data, annotation, values=None):
     values : str or list of str
         List of values for the annotation to include. If None, all values are
         considered for selection.
+    exclude_values : str or list of str
+        List of values for the annotation to exclude. Can't be combined with
+        values.
 
     Returns
     -------
@@ -501,15 +413,34 @@ def select_values(data, annotation, values=None):
         The filtered DataFrame or AnnData object containing only the selected
         rows based on the annotation and values.
     """
+
+    # Make sure that either values or exclude_values is set, but not both
+    if values is not None and exclude_values is not None:
+        error_msg = "Only use with values to include or exclude, but not both."
+        logging.error(error_msg)
+        raise ValueError(error_msg)
+
+    # If values and exclude_values are both None, return the original data
+    if values is None and exclude_values is None:
+        print("No values or exclude_values provided. Returning original data.")
+        return data
+
     # Ensure values are in a list format if not None
     if values is not None and not isinstance(values, list):
         values = [values]
 
-    # Initialize possible_annotations based on the data type
+    # Ensure exclude_values are in a list format if not None
+    if exclude_values is not None and not isinstance(exclude_values, list):
+        exclude_values = [exclude_values]
+
     if isinstance(data, pd.DataFrame):
-        possible_annotations = data.columns.tolist()
+        return _select_values_dataframe(
+            data,
+            annotation,
+            values,
+            exclude_values)
     elif isinstance(data, ad.AnnData):
-        possible_annotations = data.obs.columns.tolist()
+        return _select_values_anndata(data, annotation, values, exclude_values)
     else:
         error_msg = (
             "Unsupported data type. Data must be either a pandas DataFrame"
@@ -517,6 +448,10 @@ def select_values(data, annotation, values=None):
         )
         logging.error(error_msg)
         raise TypeError(error_msg)
+
+
+def _select_values_dataframe(data, annotation, values, exclude_values):
+    possible_annotations = data.columns.tolist()
 
     # Check if the annotation exists using check_list_in_list
     check_list_in_list(
@@ -528,27 +463,77 @@ def select_values(data, annotation, values=None):
     )
 
     # Validate provided values against unique ones, if not None
+    unique_values = data[annotation].astype(str).unique().tolist()
+    check_list_in_list(
+        values,
+        "values to include",
+        "label",
+        unique_values,
+        need_exist=True
+    )
+    check_list_in_list(
+        exclude_values,
+        "values to exclude",
+        "label",
+        unique_values,
+        need_exist=True
+    )
+
+    # Proceed with filtering based on values or exclude_values
     if values is not None:
-        if isinstance(data, pd.DataFrame):
-            unique_values = data[annotation].astype(str).unique().tolist()
-        elif isinstance(data, ad.AnnData):
-            unique_values = data.obs[annotation].astype(str).unique().tolist()
-        check_list_in_list(
-            values, "values", "label", unique_values, need_exist=True
+        filtered_data = data[data[annotation].isin(values)]
+    elif exclude_values is not None:
+        filtered_data = data[~data[annotation].isin(exclude_values)]
+
+    count = filtered_data.shape[0]
+    logging.info(
+        f"Summary of returned dataset: {count} cells",
+        " match the selected labels."
         )
 
-    # Proceed with filtering based on data type and count matching cells
-    if isinstance(data, pd.DataFrame):
-        filtered_data = data if values is None else \
-            data[data[annotation].isin(values)]
-        count = filtered_data.shape[0]
-    elif isinstance(data, ad.AnnData):
-        filtered_data = data if values is None else \
-            data[data.obs[annotation].isin(values)]
-        count = filtered_data.n_obs
+    return filtered_data
 
-    logging.info(f"Summary of returned dataset: {count} cells "
-                 "match the selected labels.")
+
+def _select_values_anndata(data, annotation, values, exclude_values):
+    possible_annotations = data.obs.columns.tolist()
+
+    # Check if the annotation exists using check_list_in_list
+    check_list_in_list(
+        input=[annotation],
+        input_name="annotation",
+        input_type="column name/annotation key",
+        target_list=possible_annotations,
+        need_exist=True
+    )
+
+    # Validate provided values against unique ones, if not None
+    unique_values = data.obs[annotation].astype(str).unique().tolist()
+    check_list_in_list(
+        values,
+        "values to include",
+        "label",
+        unique_values,
+        need_exist=True
+    )
+    check_list_in_list(
+        exclude_values,
+        "values to exclude",
+        "label",
+        unique_values,
+        need_exist=True
+    )
+
+    # Proceed with filtering based on values or exclude_values
+    if values is not None:
+        filtered_data = data[data.obs[annotation].isin(values)].copy()
+    elif exclude_values is not None:
+        filtered_data = data[~data.obs[annotation].isin(exclude_values)].copy()
+
+    count = filtered_data.n_obs
+    logging.info(
+        f"Summary of returned dataset: {count}"
+        " cells match the selected labels."
+        )
 
     return filtered_data
 
@@ -948,7 +933,6 @@ def combine_dfs(dataframes: list):
     return combined_df
 
 
-
 def add_pin_color_rules(
     adata,
     label_color_dict: dict,
@@ -1137,3 +1121,91 @@ def combine_annotations(
 
     return adata
 
+
+def summarize_dataframe(
+    df: pd.DataFrame,
+    columns,
+    print_nan_locations: bool = False
+) -> dict:
+    """
+    Summarize specified columns in a DataFrame.
+
+    For numeric columns, computes summary statistics.
+    For categorical columns, returns unique labels and frequencies.
+    In both cases, missing values (None/NaN) are flagged and their row indices
+    identified.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to summarize.
+    columns : str or list of str
+        The column name or list of column names to analyze.
+    print_nan_locations : bool, optional
+        If True, prints the row indices where None/NaN values occur.
+        Default is False.
+
+    Returns
+    -------
+    dict
+        A dictionary where each key is a column name and its value is another
+        dictionary with:
+          - 'data_type': either 'numeric' or 'categorical'
+          - 'missing_indices': list of row indices with missing values
+          - 'summary': summary statistics if numeric or unique labels with
+          counts if categorical
+    """
+    # Convert a single column string to list
+    if isinstance(columns, str):
+        columns = [columns]
+
+    results = {}
+    for col in columns:
+        col_info = {}
+        # Identify missing values (None or NaN)
+        missing_mask = df[col].isnull()
+        missing_indices = df.index[missing_mask].tolist()
+        col_info['missing_indices'] = missing_indices
+        col_info['count_missing_indices'] = len(missing_indices)
+
+        # Optionally print locations of missing values
+        if print_nan_locations and missing_indices:
+            print(
+                f"Column '{col}' has missing values at rows:"
+                " {missing_indices}"
+            )
+
+        # If the column is numeric, compute summary statistics
+        if pd.api.types.is_numeric_dtype(df[col]):
+            data = df[col]
+            stats = {
+                'count': int(data.count()),
+                'mean': data.mean(),
+                'std': data.std(),
+                'min': data.min(),
+                '25%': data.quantile(0.25),
+                '50%': data.median(),
+                '75%': data.quantile(0.75),
+                'max': data.max()
+            }
+            col_info['data_type'] = 'numeric'
+            col_info['summary'] = stats
+        else:
+            # Otherwise, treat as categorical
+            unique_values = df[col].dropna().unique().tolist()
+            value_counts = df[col].value_counts(dropna=True).to_dict()
+            col_info['data_type'] = 'categorical'
+            col_info['summary'] = {
+                'unique_values': unique_values,
+                'value_counts': value_counts
+            }
+        results[col] = col_info
+
+        # Also print a summary to standard output
+        print(f"Summary for column '{col}':")
+        print(f"Type: {col_info['data_type']}")
+        print("Count missing indices:", col_info['count_missing_indices'])
+        print("Missing indices:", col_info['missing_indices'])
+        print("Details:", col_info['summary'])
+        print("-" * 40)
+    return results
