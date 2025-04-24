@@ -1307,7 +1307,11 @@ def compare_annotations(adata, annotation_list, metric="adjusted_rand_score"):
     matrix_final = np.array(matrix)
 
     # creates a heatmap that corresponds to the final correlational matrix
-    fig = px.imshow(matrix_final)
+    fig = px.imshow(matrix_final,
+                    labels=dict(x="Clusters", y="Clusters", color="Value"),
+                    x=annotation_list,
+                    y=annotation_list)
+    fig.update_xaxes(side="top")
 
     #Store output in AnnData
     adata.uns["compare_annotations"] = matrix_final
