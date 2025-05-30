@@ -9,7 +9,7 @@ from spac.visualization import embedded_scatter_plot
 matplotlib.use('Agg')
 
 
-class TestDimensionalityReductionPlot(unittest.TestCase):
+class TestStaticScatterPlot(unittest.TestCase):
 
     def setUp(self):
         self.adata = anndata.AnnData(X=np.random.rand(10, 10))
@@ -32,7 +32,7 @@ class TestDimensionalityReductionPlot(unittest.TestCase):
             "Please run UMAP before calling this function."
         )
         self.assertEqual(str(cm.exception), expected_msg)
- 
+
     def test_missing_tsne_coordinates(self):
         del self.adata.obsm['X_tsne']
         with self.assertRaises(ValueError) as cm:
@@ -129,8 +129,10 @@ class TestDimensionalityReductionPlot(unittest.TestCase):
     def test_invalid_method(self):
         with self.assertRaises(ValueError) as cm:
             embedded_scatter_plot(self.adata, 'invalid_method')
-        expected_msg = ("Method should be one of {'tsne', 'umap', 'pca', 'spatial'}."
-                        ' Got:"invalid_method"')
+        expected_msg = ("Method should be one of {'tsne', 'umap', 'pca',"
+                        " 'spatial'}."
+                        ' Got:"invalid_method"'
+                        )
         self.assertEqual(str(cm.exception), expected_msg)
 
     def test_input_derived_feature_3d(self):
@@ -159,6 +161,7 @@ class TestDimensionalityReductionPlot(unittest.TestCase):
         self.assertEqual(ax.get_xlabel(), 't-SNE 1')
         self.assertEqual(ax.get_ylabel(), 't-SNE 2')
         self.assertEqual(ax.get_title(), 'TSNE-annotation_column')
+
 
 class SpatialPlotTestCase(unittest.TestCase):
     def setUp(self):
@@ -198,17 +201,31 @@ class SpatialPlotTestCase(unittest.TestCase):
     def test_invalid_adata(self):
         # Test when adata is not an instance of anndata.AnnData
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=None, method='spatial', spot_size=self.spot_size, alpha=self.alpha)
+            embedded_scatter_plot(adata=None,
+                                  method='spatial',
+                                  spot_size=self.spot_size,
+                                  alpha=self.alpha
+                                  )
 
     def test_invalid_layer(self):
         # Test when layer is not a string
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=self.adata, method='spatial', layer=123, spot_size=self.spot_size, alpha=self.alpha)
+            embedded_scatter_plot(adata=self.adata,
+                                  method='spatial',
+                                  layer=123,
+                                  spot_size=self.spot_size,
+                                  alpha=self.alpha
+                                  )
 
     def test_invalid_feature(self):
         # Test when feature is not a string
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=self.adata, method='spatial', feature=123, spot_size=self.spot_size, alpha=self.alpha)
+            embedded_scatter_plot(adata=self.adata,
+                                  method='spatial',
+                                  feature=123,
+                                  spot_size=self.spot_size,
+                                  alpha=self.alpha
+                                  )
 
     def test_invalid_annotation(self):
         # Test when annotation is not a string
@@ -224,22 +241,26 @@ class SpatialPlotTestCase(unittest.TestCase):
     def test_invalid_spot_size(self):
         # Test when spot_size is not an integer
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=self.adata, method='spatial', spot_size=10.5, alpha=self.alpha)
+            embedded_scatter_plot(adata=self.adata, method='spatial',
+                                  spot_size=10.5, alpha=self.alpha)
 
     def test_invalid_alpha(self):
         # Test when alpha is not a float
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=self.adata, method='spatial', spot_size=self.spot_size, alpha="0.5")
+            embedded_scatter_plot(adata=self.adata, method='spatial',
+                                  spot_size=self.spot_size, alpha="0.5")
 
     def test_invalid_alpha_range(self):
         # Test when alpha is outside the range of 0 to 1
         with self.assertRaises(ValueError):
-            embedded_scatter_plot(adata=self.adata, method='spatial', spot_size=self.spot_size, alpha=-0.5)
+            embedded_scatter_plot(adata=self.adata, method='spatial',
+                                  spot_size=self.spot_size, alpha=-0.5)
 
     def test_missing_annotation(self):
         # Test when annotation is None and feature is None
         with self.assertRaises(ValueError) as cm:
-            embedded_scatter_plot(adata=self.adata, method='spatial', spot_size=self.spot_size, alpha=self.alpha)
+            embedded_scatter_plot(adata=self.adata, method='spatial',
+                                  spot_size=self.spot_size, alpha=self.alpha)
         error_msg = str(cm.exception)
         err_msg_exp = "Both annotation and feature are None, " + \
             "please provide single input."
@@ -256,10 +277,11 @@ class SpatialPlotTestCase(unittest.TestCase):
                 alpha=self.alpha
             )
         error_msg = str(cm.exception)
-        err_msg_exp = 'The annotation "annotation4"' +\
-                      'not found in the dataset.' +\
-                      ' Existing annotations are: annotation1,' +\
-                      ' annotation2, annotation3'
+        err_msg_exp = ("The annotation 'annotation4' does not exist "
+                       "in the provided dataset.\n"
+                       "Existing annotations are:\n"
+                       "annotation1\nannotation2\nannotation3"
+                       )
         self.assertEqual(error_msg, err_msg_exp)
 
     def test_invalid_feature_name(self):
@@ -267,14 +289,17 @@ class SpatialPlotTestCase(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             embedded_scatter_plot(
                 adata=self.adata,
-                method='spatial', 
+                method='spatial',
                 feature='feature1',
                 spot_size=self.spot_size,
                 alpha=self.alpha
             )
         error_msg = str(cm.exception)
-        err_msg_exp = "Feature feature1 not found," + \
-            " please check the sample metadata."
+        target_features = "\n".join(self.adata.var_names)
+        err_msg_exp = ("The feature 'feature1' does not exist "
+                       "in the provided dataset.\n"
+                       f"Existing features are:\n{target_features}"
+                       )
         self.assertEqual(error_msg, err_msg_exp)
 
     def test_spatial_plot_annotation(self):
@@ -319,18 +344,18 @@ class SpatialPlotTestCase(unittest.TestCase):
 
         # Mock the spatial function with the mock_spatial function
         # spatial_plot.__globals__['sc.pl.spatial'] = mock_spatial
-        
+
         with patch('scanpy.pl.spatial', new=mock_spatial):
             # Create an instance of Axes
             ax = plt.Axes(
                 plt.figure(),
                 rect=[0, 0, 1, 1]
             )
-            
+
             # Call the spatial_plot function with the ax object
-            fig, returned_ax_list = embedded_scatter_plot(
+            fig, returned_ax = embedded_scatter_plot(
                 adata=self.adata,
-                method='spatial', 
+                method='spatial',
                 annotation='annotation1',
                 layer=None,
                 ax=ax,
@@ -340,7 +365,6 @@ class SpatialPlotTestCase(unittest.TestCase):
 
         # Assert that the spatial_plot function returned a list
         # containing an Axes object with the same properties
-        returned_ax = returned_ax_list[0]
         self.assertEqual(returned_ax.get_title(), ax.get_title())
         self.assertEqual(returned_ax.get_xlabel(), ax.get_xlabel())
         self.assertEqual(returned_ax.get_ylabel(), ax.get_ylabel())
@@ -385,9 +409,9 @@ class SpatialPlotTestCase(unittest.TestCase):
             )
 
             # Call the spatial_plot function with the ax object
-            fig, returned_ax_list = embedded_scatter_plot(
+            fig, returned_ax = embedded_scatter_plot(
                 adata=self.adata,
-                method='spatial', 
+                method='spatial',
                 feature='Intensity_10',
                 ax=ax,
                 spot_size=self.spot_size,
@@ -398,7 +422,6 @@ class SpatialPlotTestCase(unittest.TestCase):
 
         # Assert that the spatial_plot function returned a list
         # containing an Axes object with the same properties
-        returned_ax = returned_ax_list[0]
         self.assertEqual(returned_ax.get_title(), ax.get_title())
         self.assertEqual(returned_ax.get_xlabel(), ax.get_xlabel())
         self.assertEqual(returned_ax.get_ylabel(), ax.get_ylabel())
@@ -447,7 +470,7 @@ class SpatialPlotTestCase(unittest.TestCase):
 
             # Perform assertions on the spatial plot
             # Check if ax has data plotted
-            self.assertTrue(ax[0].has_data())
+            self.assertTrue(ax.has_data())
 
     def test_spatial_plot_combos_annotation(self):
         # Define the parameter combinations to test
@@ -494,7 +517,8 @@ class SpatialPlotTestCase(unittest.TestCase):
             plt.close(fig)
             # Perform assertions on the spatial plot
             # Check if ax has data plotted
-            self.assertTrue(ax[0].has_data())
+            self.assertTrue(ax.has_data())
+
 
 if __name__ == '__main__':
     unittest.main()
