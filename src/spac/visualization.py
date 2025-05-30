@@ -23,12 +23,9 @@ from spac.utils import color_mapping, spell_out_special_characters
 from spac.data_utils import select_values
 import logging
 import warnings
-<<<<<<< HEAD
 import re
 import copy
 import io
-=======
->>>>>>> e4e8999 (linter fixes)
 import base64
 import time
 import json
@@ -378,6 +375,8 @@ def embedded_scatter_plot(
             raise ValueError(err_msg)
 
 # Extract feature name
+    feature_names = adata.var_names.tolist()
+
     if not isinstance(spot_size, int):
         raise ValueError(err_msg_spot_size)
 
@@ -410,10 +409,17 @@ def embedded_scatter_plot(
         if annotation:
             color_values = adata.obs[annotation].astype('category').values
             color_representation = annotation
+            vmin = None
+            vmax = None
         elif feature:
             data_src = adata.layers[layer] if layer else adata.X
             color_values = data_src[:, adata.var_names == feature].squeeze()
             color_representation = feature
+            feature_index = feature_names.index(feature)
+            if vmin == -999:
+                vmin = np.min(data_src[:, feature_index])
+            if vmax == -999:
+                vmax = np.max(data_src[:, feature_index])
         else:
             color_values = None
             color_representation = None
