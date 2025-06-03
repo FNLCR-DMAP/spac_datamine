@@ -376,7 +376,7 @@ def embedded_scatter_plot(
 
 # Extract feature name
     feature_names = adata.var_names.tolist()
-
+    
     if not isinstance(spot_size, int):
         raise ValueError(err_msg_spot_size)
 
